@@ -29,6 +29,7 @@ function distance(a, b) {
   return d[a.length][b.length];
 }
 const norm = n => n.toLowerCase().replace(/[-_.]+/g, "-");
+const sameButOneDigit = (a, b) => { const diff = [...a].map((c, i) => i).filter(i => a[i] !== b[i]); return diff.length === 1 && /\d/.test(a[diff[0]]) && /\d/.test(b[diff[0]]); };
 
 /** The popular package (or npm scope) a name imitates, if any. */
 export function lookalike(name, popular, scopes = POPULAR_SCOPES, known = popular) {
@@ -45,14 +46,17 @@ export function lookalike(name, popular, scopes = POPULAR_SCOPES, known = popula
     if (p.startsWith("@") || p.length < 5) continue;
     if (core !== n && core.length >= 4 && popular.has(core)) return null;
     if (n.startsWith(p) && /^\d+$/.test(n.slice(p.length))) continue; // httpx2, boto3: versioned names
+    if (n.length === p.length && sameButOneDigit(n, p)) continue; // es6-shim / es7-shim: a numbered series
     if (distance(n, p) === 1 || (core !== n && core !== p && distance(core, p) === 1) || n === p + "s" || n === p + "-js" || n === p + "js" || n === "node-" + p || (p.includes("-") && n === p.replace(/-/g, ""))) return p;
   }
   return null;
 }
 
+// `node -e "console.log('Thanks for installing, see https://…')"`: a notice, nothing runs.
+const PRINT_ONLY = /^\s*node\s+-e\s+(["'])\s*console\.(?:log|info|warn)\((?:(?!require|import|process|eval|Function|fetch|child_process|Buffer|\$\{).)*\)\s*;?\s*\1\s*$/s;
 const isKnownNpm = name => KNOWN_NPM.has(String(name).toLowerCase().replace(/[_.]+/g, "-"));
 const INSTALL_ODDITIES = [
-  { id: "install-runs-non-code", re: /\b(?:node|nodejs)\s+(?:-\S+\s+)*["']?[\w./-]+\.(?:md|txt|json|png|jpe?g|gif|css|html?|log|cfg|ini|ya?ml|lock)\b/i,
+  { id: "install-runs-non-code", re: /\b(?:node|nodejs)\s+(?:--?(?!e\b|p\b|eval\b|print\b)[\w-]+(?:=\S+)?\s+)*["']?[\w./-]+\.(?:md|txt|json|png|jpe?g|gif|css|html?|log|cfg|ini|ya?ml|lock)(?=["']?(?:\s|$|&|;|\|))/i,
     title: "Install script runs a non-code file as a program", why: "Running README.md or an image with node only works when code is hidden inside it, which is done to get past reviewers." },
   { id: "install-self-delete", re: /(?:&&|;)\s*(?:del|rm|rimraf|erase)\s+(?:-\w+\s+)*["']?[\w./\\-]+\.(?:c|m)?js\b/i,
     title: "Install script deletes the file it ran", why: "Removing the script right after running it leaves nothing to inspect; malware does this to cover its tracks." },
@@ -66,14 +70,19 @@ const TYPO = rule({ id: "dep-typosquat", severity: "high", title: "Dependency na
   why: "Typosquats copy a popular name with one letter changed so a typo installs malware.",
   fix: "Check the exact name on the registry (owner, downloads, age, repository link). If it was a typo, remove it and treat the machine as exposed if it was installed." });
 
-function checkPackageJson(file, text, out, { installed = false } = {}) {
+const LOCKS = ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"];
+
+function checkPackageJson(file, text, out, { installed = false, root } = {}) {
   const pkg = readJson(text);
   if (!pkg || typeof pkg !== "object") return;
+  // A published package being vetted (npm never ships its lockfile) rather than a project
+  // someone works in: its devDependencies never reach the people who install it.
+  const published = !!root && !pkg.private && !!pkg.name && !!pkg.version && !LOCKS.some(l => fs.existsSync(path.join(root, path.dirname(file.rel), l)));
   for (const hook of INSTALL_HOOKS) {
     const cmd = pkg.scripts?.[hook];
     // prepare and prepublish run in the author's checkout, never when a package is installed from a registry.
     if (typeof cmd !== "string" || (installed && /prepare|prepublish/.test(hook))) continue;
-    if (SUSPICIOUS_SCRIPT.test(cmd)) {
+    if (SUSPICIOUS_SCRIPT.test(cmd) && !PRINT_ONLY.test(cmd)) {
       out.push(finding(rule({ id: "install-script-suspicious", severity: installed || hook === "preinstall" ? "critical" : "high", confidence: "high",
         title: `${installed ? `Installed package ${pkg.name}` : "Package"} runs a suspicious "${hook}" script`,
         why: "Install scripts run with your user's rights the moment the package is installed; this one downloads, decodes or launches something.",
@@ -109,7 +118,7 @@ function checkPackageJson(file, text, out, { installed = false } = {}) {
       if (typeof spec !== "string") continue;
       const at = lineIn(text, `"${name}"`);
       const like = lookalike(name, TARGET_NPM, POPULAR_SCOPES, KNOWN_NPM);
-      if (like) out.push(finding(TYPO, file.rel, at, `"${name}" looks like "${like}"`));
+      if (like) out.push(finding(published && section !== "dependencies" && section !== "optionalDependencies" ? { ...TYPO, severity: "medium" } : TYPO, file.rel, at, `"${name}" looks like "${like}"`));
       if (spec === "*" || spec === "latest" || spec === "x" || spec === "") {
         out.push(finding(rule({ id: "dep-unpinned", severity: "low", title: "Dependency accepts any version",
           why: "Any future version, including a hijacked one, installs without review.", fix: "Pin a version range and commit the lockfile." }), file.rel, at, `"${name}": "${spec}"`));
@@ -351,9 +360,9 @@ function checkExtensionManifest(file, text, out) {
 
 const HOOKS = /(^|\/)(\.husky\/[^/_][^/]*|\.githooks\/[^/]+)$/;
 
-export function scanSupplyChain(file, text, out) {
+export function scanSupplyChain(file, text, out, root) {
   const base = path.basename(file.rel);
-  if (base === "package.json") checkPackageJson(file, text, out);
+  if (base === "package.json") checkPackageJson(file, text, out, { root });
   else if (base === "package-lock.json" || base === "npm-shrinkwrap.json") checkNpmLock(file, text, out);
   else if (base === "yarn.lock" || base === "pnpm-lock.yaml" || base === "bun.lock") checkOtherLocks(file, text, out);
   else if (/^requirements[\w.-]*\.(txt|in)$/.test(base) || (base === "constraints.txt" && /^(?:[^/]+\/)?(?:requirements\/)?constraints\.txt$/.test(file.rel) && !/(^|\/)(docs?|contrib|tests?)\//.test(file.rel))) checkRequirements(file, text, out);

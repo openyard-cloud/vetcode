@@ -72,7 +72,7 @@ export async function vet(target, opts = {}) {
     scanLines(file, file.text, WEB_RULES, findings);
     scanLines(file, file.text, CONFIG_RULES, findings);
     scanFile(file, file.text, CONFIG_FILE_RULES, findings);
-    scanSupplyChain(file, file.text, findings);
+    scanSupplyChain(file, file.text, findings, root);
     scanFile(file, file.text, ANOMALY_FILE_RULES, findings);
     // Bundled or minified output is full of patterns that mean nothing there; keep its findings
     // visible but let only high-confidence ones decide.
