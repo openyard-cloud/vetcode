@@ -35,14 +35,25 @@ export function installEntryFiles(dir, scripts) {
   return [...files].filter(f => f.startsWith(dir) && fs.existsSync(f));
 }
 
-export function checkInstallEntry(abs, rel, out, installed, where = "install") {
+export function checkInstallEntry(abs, rel, out, installed, where = "install", { popular = false, ownApp = false } = {}) {
   let text; try { text = fs.readFileSync(abs, "utf8"); } catch { return; }
   const caps = capabilitiesOf(text);
   const net = caps.includes("uses the network");
   const risky = caps.filter(c => c !== "uses the network");
-  if (!net || !risky.length) return;
   const lib = where === "library";
-  out.push(finding({ id: lib ? "library-entry-capabilities" : "install-time-capabilities", category: "supply-chain", severity: risky.length >= 2 || installed ? "critical" : "high", confidence: "medium",
+  // Calling out at install time with nothing else is how dependency-confusion probes report a
+  // hit. Popular binary downloaders (esbuild, puppeteer, chromedriver) do it too, so they are left out.
+  if (net && !risky.length && !lib && !popular && !ownApp) {
+    out.push(finding({ id: "install-time-network", category: "supply-chain", severity: "high", confidence: "medium", title: "Install-time code contacts a server",
+      why: "This file runs during install and makes a network request. Ordinary packages build or do nothing at install; probes and beacons call home from here.",
+      fix: "Read the file and see where it connects. If it is not downloading a documented binary from the project's own releases, do not install it." }, rel, 1, caps.join(" + ")));
+    return;
+  }
+  if (!net || !risky.length) return;
+  // A bundled library (tens of kilobytes of other people's code) nearly always has fetch next to
+  // eval or process.env somewhere; only the stealer-specific capabilities say anything there.
+  const bundle = lib && text.length > 40_000 && !risky.some(c => c === "collects user and host details" || c === "writes into home or startup folders");
+  out.push(finding({ id: lib ? "library-entry-capabilities" : "install-time-capabilities", category: "supply-chain", severity: bundle ? "medium" : risky.length >= 2 || installed ? "critical" : "high", confidence: "medium",
     title: lib ? "Library entry point combines network access with secrets, programs or hidden code" : "Install-time code combines network access with secrets, programs or hidden code",
     why: `This file runs ${lib ? "as soon as the library is imported" : "during install"} and ${caps.join(", ")}. That combination is the shape of nearly every credential-stealing package.`,
     fix: "Read the whole file before installing. If it is a dependency, install with --ignore-scripts until it is explained." }, rel, 1, caps.join(" + ")));

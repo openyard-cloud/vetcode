@@ -50,6 +50,18 @@ export function lookalike(name, popular, scopes = POPULAR_SCOPES, known = popula
   return null;
 }
 
+const isKnownNpm = name => KNOWN_NPM.has(String(name).toLowerCase().replace(/[_.]+/g, "-"));
+const INSTALL_ODDITIES = [
+  { id: "install-runs-non-code", re: /\b(?:node|nodejs)\s+(?:-\S+\s+)*["']?[\w./-]+\.(?:md|txt|json|png|jpe?g|gif|css|html?|log|cfg|ini|ya?ml|lock)\b/i,
+    title: "Install script runs a non-code file as a program", why: "Running README.md or an image with node only works when code is hidden inside it, which is done to get past reviewers." },
+  { id: "install-self-delete", re: /(?:&&|;)\s*(?:del|rm|rimraf|erase)\s+(?:-\w+\s+)*["']?[\w./\\-]+\.(?:c|m)?js\b/i,
+    title: "Install script deletes the file it ran", why: "Removing the script right after running it leaves nothing to inspect; malware does this to cover its tracks." },
+  { id: "install-fetches-packages", re: /\b(?:npm|yarn|pnpm)\s+(?:i|install|add)\s+(?!-)[@\w]/,
+    title: "Install script installs other packages", why: "Dependencies belong in package.json, where they are visible and locked. Installing extra packages from a script hides what ends up on the machine." },
+  { id: "install-background", re: /\bnode\s[^&|;]*\s&\s*(?:$|;)/,
+    title: "Install script keeps running in the background", why: "Detaching a process from the install lets it outlive the install and keep working unnoticed." },
+];
+
 const TYPO = rule({ id: "dep-typosquat", severity: "high", title: "Dependency name looks like a popular package",
   why: "Typosquats copy a popular name with one letter changed so a typo installs malware.",
   fix: "Check the exact name on the registry (owner, downloads, age, repository link). If it was a typo, remove it and treat the machine as exposed if it was installed." });
@@ -59,7 +71,8 @@ function checkPackageJson(file, text, out, { installed = false } = {}) {
   if (!pkg || typeof pkg !== "object") return;
   for (const hook of INSTALL_HOOKS) {
     const cmd = pkg.scripts?.[hook];
-    if (typeof cmd !== "string") continue;
+    // prepare and prepublish run in the author's checkout, never when a package is installed from a registry.
+    if (typeof cmd !== "string" || (installed && /prepare|prepublish/.test(hook))) continue;
     if (SUSPICIOUS_SCRIPT.test(cmd)) {
       out.push(finding(rule({ id: "install-script-suspicious", severity: installed || hook === "preinstall" ? "critical" : "high", confidence: "high",
         title: `${installed ? `Installed package ${pkg.name}` : "Package"} runs a suspicious "${hook}" script`,
@@ -69,6 +82,20 @@ function checkPackageJson(file, text, out, { installed = false } = {}) {
       out.push(finding(rule({ id: "install-script", severity: "info", confidence: "high", title: `Installed package ${pkg.name} runs a "${hook}" script`,
         why: "Install scripts are where most npm malware lives; this one looks ordinary but runs on every install.", fix: "Know why it needs to; consider `npm config set ignore-scripts true` and allow-listing." }), file.rel, lineIn(text, `"${hook}"`), `"${hook}": "${cmd}"`));
     }
+  }
+  // Install commands shaped only the way attacks shape them.
+  const hooks = INSTALL_HOOKS.filter(h => h !== "prepare" && typeof pkg.scripts?.[h] === "string");
+  for (const hook of hooks) {
+    const cmd = pkg.scripts[hook], odd = INSTALL_ODDITIES.find(o => o.re.test(cmd));
+    if (odd) out.push(finding(rule({ id: odd.id, severity: "high", confidence: "high", title: odd.title, why: odd.why,
+      fix: "Do not install it. If it is already installed, read every file the script ran and treat the machine as exposed." }), file.rel, lineIn(text, `"${hook}"`), `"${hook}": "${cmd}"`));
+  }
+  // Dependency confusion: an internal-sounding name published with a huge version number so it
+  // outranks the company's private package, plus an install script to report the hit.
+  if (hooks.length && !pkg.private && typeof pkg.name === "string" && parseInt(pkg.version, 10) >= 90 && !isKnownNpm(pkg.name)) {
+    out.push(finding(rule({ id: "dep-confusion-version", severity: "high", title: `Version ${pkg.version} with an install script`,
+      why: "Dependency-confusion packages use version numbers like 99.x so they win over a private package of the same name, and an install script to call home.",
+      fix: "Check that this package really comes from the registry you expect; pin private packages to their scope and registry." }), file.rel, lineIn(text, `"version"`), `"version": "${pkg.version}"`));
   }
   // When vetting a package, its own name imitating a popular one is a strong signal.
   if (!pkg.private && typeof pkg.name === "string" && pkg.version) {
@@ -349,8 +376,8 @@ const hookScripts = pkg => Object.fromEntries(INSTALL_HOOKS.filter(h => typeof p
 export function scanInstalledPackage(dir, root, out) {
   const text = fs.readFileSync(path.join(dir, "package.json"), "utf8");
   checkPackageJson({ rel: relTo(root, path.join(dir, "package.json")) }, text, out, { installed: true });
-  const pkg = readJson(text), hooks = hookScripts(pkg);
-  for (const f of installEntryFiles(dir, hooks)) checkInstallEntry(f, relTo(root, f), out, true);
+  const pkg = readJson(text), hooks = Object.fromEntries(Object.entries(hookScripts(pkg)).filter(([h]) => !/prepare|prepublish/.test(h)));
+  for (const f of installEntryFiles(dir, hooks)) checkInstallEntry(f, relTo(root, f), out, true, "install", { popular: isKnownNpm(pkg?.name) });
   return Object.keys(hooks).length > 0;
 }
 
@@ -374,7 +401,8 @@ export function scanProjectInstallEntries(root, files, out) {
     if (!/(^|\/)package\.json$/.test(f.rel)) continue;
     const dir = path.join(root, path.dirname(f.rel)), pkg = readJson(f.text);
     const install = installEntryFiles(dir, hookScripts(pkg));
-    for (const abs of install) checkInstallEntry(abs, relTo(root, abs), out, false);
+    // A private package is the user's own app; its setup scripts are theirs to know.
+    for (const abs of install) checkInstallEntry(abs, relTo(root, abs), out, false, "install", { popular: isKnownNpm(pkg?.name), ownApp: !!pkg?.private });
     for (const abs of libraryEntryFiles(dir, pkg)) if (!install.includes(abs)) checkInstallEntry(abs, relTo(root, abs), out, false, "library");
   }
 }

