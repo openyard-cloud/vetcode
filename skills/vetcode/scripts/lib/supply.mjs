@@ -5,8 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { finding, lineOf } from "./engine.mjs";
-import { POPULAR_NPM, POPULAR_PYPI, POPULAR_SCOPES } from "./popular.mjs";
-import { installEntryFiles, checkInstallEntry, libraryEntryFiles } from "./capabilities.mjs";
+import { POPULAR_SCOPES, KNOWN_NPM, KNOWN_PYPI, TARGET_NPM, TARGET_PYPI } from "./popular.mjs";
+import { installEntryFiles, checkInstallEntry, libraryEntryFiles, capabilitiesOf } from "./capabilities.mjs";
 
 const rule = r => ({ category: "supply-chain", confidence: "medium", ...r });
 const readJson = text => { try { return JSON.parse(text.replace(/^\uFEFF/, "")); } catch { return null; } };
@@ -31,9 +31,9 @@ function distance(a, b) {
 const norm = n => n.toLowerCase().replace(/[-_.]+/g, "-");
 
 /** The popular package (or npm scope) a name imitates, if any. */
-export function lookalike(name, popular, scopes = POPULAR_SCOPES) {
+export function lookalike(name, popular, scopes = POPULAR_SCOPES, known = popular) {
   const n = norm(name);
-  if (popular.has(n)) return null;
+  if (popular.has(n) || known.has(n)) return null;
   const scoped = n.match(/^@([^/]+)\/(.+)$/);
   if (scoped) {
     if (scopes.has(scoped[1])) return null;
@@ -44,6 +44,7 @@ export function lookalike(name, popular, scopes = POPULAR_SCOPES) {
   for (const p of popular) {
     if (p.startsWith("@") || p.length < 5) continue;
     if (core !== n && core.length >= 4 && popular.has(core)) return null;
+    if (n.startsWith(p) && /^\d+$/.test(n.slice(p.length))) continue; // httpx2, boto3: versioned names
     if (distance(n, p) === 1 || (core !== n && core !== p && distance(core, p) === 1) || n === p + "s" || n === p + "-js" || n === p + "js" || n === "node-" + p || (p.includes("-") && n === p.replace(/-/g, ""))) return p;
   }
   return null;
@@ -71,7 +72,7 @@ function checkPackageJson(file, text, out, { installed = false } = {}) {
   }
   // When vetting a package, its own name imitating a popular one is a strong signal.
   if (!pkg.private && typeof pkg.name === "string" && pkg.version) {
-    const like = lookalike(pkg.name, POPULAR_NPM);
+    const like = lookalike(pkg.name, TARGET_NPM, POPULAR_SCOPES, KNOWN_NPM);
     if (like) out.push(finding(rule({ id: "package-name-typosquat", severity: "high", title: "This package's name imitates a popular package",
       why: "Typosquats borrow a popular name with a small change so people install them by mistake.", fix: "Install the real package instead; treat this one as hostile." }), file.rel, lineIn(text, `"name"`), `"${pkg.name}" looks like "${like}"`));
   }
@@ -80,7 +81,7 @@ function checkPackageJson(file, text, out, { installed = false } = {}) {
     for (const [name, spec] of Object.entries(pkg[section] || {})) {
       if (typeof spec !== "string") continue;
       const at = lineIn(text, `"${name}"`);
-      const like = lookalike(name, POPULAR_NPM);
+      const like = lookalike(name, TARGET_NPM, POPULAR_SCOPES, KNOWN_NPM);
       if (like) out.push(finding(TYPO, file.rel, at, `"${name}" looks like "${like}"`));
       if (spec === "*" || spec === "latest" || spec === "x" || spec === "") {
         out.push(finding(rule({ id: "dep-unpinned", severity: "low", title: "Dependency accepts any version",
@@ -142,25 +143,32 @@ function checkRequirements(file, text, out) {
         why: "It skips PyPI and its content can change.", fix: "Pin to a commit hash or use a published release." }), file.rel, i + 1, line));
       return;
     }
-    const name = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1];
+    // A requirement is a name, optional extras, version specifiers and markers; prose is not.
+    const spec = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(?:(?:[<>=!~]=?|===)\s*[^\s;,]+(?:\s*,\s*(?:[<>=!~]=?|===)\s*[^\s;,]+)*)?\s*(?:;.*)?$/);
+    const name = spec?.[1];
     if (!name) return;
-    const like = lookalike(name, POPULAR_PYPI);
+    const like = lookalike(name, TARGET_PYPI, POPULAR_SCOPES, KNOWN_PYPI);
     if (like) out.push(finding(TYPO, file.rel, i + 1, `"${name}" looks like "${like}"`));
   });
 }
 
 function checkPyproject(file, text, out) {
   const names = new Set();
-  for (const m of text.matchAll(/^\s*dependencies\s*=\s*\[([\s\S]*?)\]/gm)) for (const d of m[1].matchAll(/["']([A-Za-z0-9][A-Za-z0-9._-]*)/g)) names.add(d[1]);
+  for (const m of text.matchAll(/^\s*(?:dependencies|[\w-]+)\s*=\s*\[([\s\S]*?)\]/gm)) {
+    if (!/^\s*dependencies|optional-dependencies/.test(text.slice(Math.max(0, m.index - 200), m.index + 20)) && !/^\s*dependencies/.test(m[0])) continue;
+    for (const d of m[1].matchAll(/"([^"]*)"|'([^']*)'/g)) { const name = (d[1] ?? d[2]).match(/^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1]; if (name) names.add(name); }
+  }
   for (const m of text.matchAll(/^\[tool\.poetry\.(?:dev-)?dependencies\]([\s\S]*?)(?=^\[)/gm)) for (const d of m[1].matchAll(/^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*=/gm)) names.add(d[1]);
-  for (const n of names) { const like = lookalike(n, POPULAR_PYPI); if (like && n.toLowerCase() !== "python") out.push(finding(TYPO, file.rel, lineIn(text, n), `"${n}" looks like "${like}"`)); }
+  for (const n of names) { const like = lookalike(n, TARGET_PYPI, POPULAR_SCOPES, KNOWN_PYPI); if (like && n.toLowerCase() !== "python") out.push(finding(TYPO, file.rel, lineIn(text, n), `"${n}" looks like "${like}"`)); }
 }
 
 function checkSetupPy(file, text, out) {
   const m = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.|subprocess\.|os\.system|os\.popen|exec\s*\(|eval\s*\(|socket\.|base64\.b64decode|__import__\()/.exec(text);
   if (!m) return;
   // Building C extensions or reading git tags needs subprocess; fetching or decoding code does not.
-  const strong = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.|socket\.|base64\.b64decode|__import__\(|exec\s*\(|eval\s*\()|\b(?:curl|wget|powershell)\b/.test(text);
+  // exec(open("pkg/version.py").read()) and compile(open(...)) read the version; that is fine.
+  const runsDecoded = /\b(?:exec|eval)\s*\((?!\s*(?:compile\s*\()?\s*open\s*\()(?![^)\n]*\.read\(\))[^\n]*/.test(text) && /b64decode|decompress|marshal|fromhex|unhexlify|__import__/.test(text);
+  const strong = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.(?:get|post)|socket\.socket|socket\.connect)\b|\b(?:curl|wget|powershell)\b/.test(text) || runsDecoded;
   out.push(finding(rule({ id: "setup-py-runs-code", severity: strong ? "high" : "low", title: strong ? "setup.py fetches, decodes or evaluates code" : "setup.py runs shell commands",
     why: "setup.py executes during `pip install`; downloading or launching programs there is a classic way to ship malware.",
     fix: "Read exactly what it runs. Prefer packages that ship wheels; install untrusted ones in a throwaway container." }), file.rel, lineOf(text, m.index), text.split("\n")[lineOf(text, m.index) - 1]));
@@ -287,14 +295,14 @@ function checkExtensionManifest(file, text, out) {
     why: "Pages can send it commands.", fix: "List the exact origins." }), file.rel, lineIn(text, "externally_connectable"), JSON.stringify(m.externally_connectable)));
 }
 
-const HOOKS = /(^|\/)(\.husky\/[^/_][^/]*|\.githooks\/[^/]+|lefthook\.ya?ml|\.pre-commit-config\.ya?ml)$/;
+const HOOKS = /(^|\/)(\.husky\/[^/_][^/]*|\.githooks\/[^/]+)$/;
 
 export function scanSupplyChain(file, text, out) {
   const base = path.basename(file.rel);
   if (base === "package.json") checkPackageJson(file, text, out);
   else if (base === "package-lock.json" || base === "npm-shrinkwrap.json") checkNpmLock(file, text, out);
   else if (base === "yarn.lock" || base === "pnpm-lock.yaml" || base === "bun.lock") checkOtherLocks(file, text, out);
-  else if (/^requirements[\w.-]*\.(txt|in)$/.test(base) || base === "constraints.txt") checkRequirements(file, text, out);
+  else if (/^requirements[\w.-]*\.(txt|in)$/.test(base) || (base === "constraints.txt" && /^(?:[^/]+\/)?(?:requirements\/)?constraints\.txt$/.test(file.rel) && !/(^|\/)(docs?|contrib|tests?)\//.test(file.rel))) checkRequirements(file, text, out);
   else if (base === "pyproject.toml") checkPyproject(file, text, out);
   else if (base === "setup.py") checkSetupPy(file, text, out);
   else if (/\.github\/workflows\/[^/]+\.ya?ml$/.test(file.rel)) checkWorkflow(file, text, out);
@@ -317,6 +325,20 @@ export function scanInstalledPackage(dir, root, out) {
   const pkg = readJson(text), hooks = hookScripts(pkg);
   for (const f of installEntryFiles(dir, hooks)) checkInstallEntry(f, relTo(root, f), out, true);
   return Object.keys(hooks).length > 0;
+}
+
+/** Python code that runs on import: a package __init__.py that phones home with system details. */
+export function scanPythonImportTime(files, out) {
+  for (const f of files) {
+    if (!/(^|\/)__init__\.py$/.test(f.rel) || f.text.length > 40_000 || /(^|\/)(tests?|docs?|examples?)\//.test(f.rel)) continue;
+    const caps = capabilitiesOf(f.text);
+    // Running programs alone is common (setuptools, build helpers); a beacon collects identity or hides code.
+    const risky = caps.filter(c => ["collects user and host details", "decodes or builds code at runtime", "writes into home or startup folders"].includes(c));
+    if (!caps.includes("uses the network") || !risky.length) continue;
+    out.push(finding(rule({ id: "import-time-capabilities", severity: risky.length >= 2 ? "critical" : "high", title: "Package __init__.py reaches out on import",
+      why: `This runs as soon as anyone imports the package, and it ${caps.join(", ")}. Libraries rarely need that at import time; beacons and stealers do.`,
+      fix: "Read the whole file; pin a version you reviewed or remove the package." }), f.rel, 1, caps.join(" + ")));
+  }
 }
 
 /** The project's own install-time files (package.json hooks, setup.py). */

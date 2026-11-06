@@ -10,7 +10,7 @@ import { scanSecrets, scanSecretFiles, scanHistory } from "./secrets.mjs";
 import { MALWARE_RULES, MALWARE_FILE_RULES } from "./malware.mjs";
 import { WEB_RULES } from "./web.mjs";
 import { CONFIG_RULES, CONFIG_FILE_RULES, supabaseTablesWithoutRls } from "./config.mjs";
-import { scanSupplyChain, scanInstalledPackage, scanProjectInstallEntries, hardeningAdvice } from "./supply.mjs";
+import { scanSupplyChain, scanInstalledPackage, scanProjectInstallEntries, scanPythonImportTime, hardeningAdvice } from "./supply.mjs";
 import crypto from "node:crypto";
 import { scanAgentFiles } from "./agent.mjs";
 import { lockedPackages, queryOsv } from "./osv.mjs";
@@ -87,6 +87,7 @@ export async function vet(target, opts = {}) {
   const prof = profiles(files);
   purposeMismatches(prof, findings);
   scanProjectInstallEntries(root, files, findings);
+  scanPythonImportTime(files, findings);
   if (!only) hardeningAdvice(root, files, findings);
   const mcpLock = opts.mcpLock ? checkMcpLock(opts.mcpLock, files, findings) : null;
   if (!only) scanSecretFiles(root, findings);

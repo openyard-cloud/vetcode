@@ -2,6 +2,8 @@
 // one letter away from them (so they are not reported as lookalikes). Names are normalised:
 // lower case, `_` and `.` as `-`.
 
+import fs from "node:fs";
+
 const list = s => new Set(s.trim().split(/\s+/).map(n => n.toLowerCase().replace(/[_.]+/g, "-")));
 
 export const POPULAR_NPM = list(`
@@ -51,7 +53,16 @@ python-jose oauthlib requests-oauthlib websocket-client websockets grpcio protob
 jsonschema simplejson ujson orjson msgpack cffi pycparser wrapt decorator packaging filelock platformdirs appdirs psutil
 pexpect ptyprocess sh pyserial pygments docutils sphinx markdown mkdocs openpyxl xlrd xlsxwriter python-docx reportlab pypdf2
 pypdf pymupdf discord-py python-telegram-bot slack-sdk twilio stripe sentry-sdk streamlit gradio dash bokeh networkx sympy
-pymssql boto tomli-w httpie
+pymssql boto tomli-w httpie cchardet psycopg-binary psycopg-c psycopg-pool bpython authlib aiohttp-retry ujson-ext tox-uv
 numba cython jupyter notebook ipython ipykernel jupyterlab colorlog loguru structlog tenacity backoff retrying cachetools
 more-itertools toolz pyarrow polars duckdb dask xgboost lightgbm catboost statsmodels nltk spacy gensim
 `);
+
+// Bigger public rankings (names only, see the headers of the data files): every name in them is
+// a real, widely used package, and the top of each list is what typosquatters imitate.
+const ranked = file => { try { return fs.readFileSync(new URL(`./data/${file}`, import.meta.url), "utf8").split("\n").filter(l => l && !l.startsWith("#")).map(n => n.toLowerCase().replace(/[_.]+/g, "-")); } catch { return []; } };
+const npmRanked = ranked("popular-npm.txt"), pypiRanked = ranked("popular-pypi.txt");
+export const KNOWN_NPM = new Set([...POPULAR_NPM, ...npmRanked]);
+export const KNOWN_PYPI = new Set([...POPULAR_PYPI, ...pypiRanked]);
+export const TARGET_NPM = new Set([...POPULAR_NPM, ...npmRanked.slice(0, 1500)]);
+export const TARGET_PYPI = new Set([...POPULAR_PYPI, ...pypiRanked.slice(0, 1500)]);

