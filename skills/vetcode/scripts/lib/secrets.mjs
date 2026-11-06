@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { DOC, finding, suppressedHere } from "./engine.mjs";
+import { DOC, finding, suppressedHere, presentIn } from "./engine.mjs";
 
 const ROTATE = "Revoke and rotate it at the provider first (assume it is already copied), then move it to an environment variable or secret store and remove it from the code and git history.";
 
@@ -27,7 +27,7 @@ export const SECRET_RULES = [
   { id: "secret-telegram-bot", severity: "high", title: "Telegram bot token", re: /\b\d{8,10}:AA[0-9A-Za-z_-]{33}\b/ },
   { id: "secret-twilio", severity: "medium", title: "Twilio API key", re: /\bSK[0-9a-f]{32}\b/ },
   { id: "secret-ai-key", severity: "critical", title: "AI provider API key", re: /\b(?:hf_[A-Za-z0-9]{34,}|gsk_[A-Za-z0-9]{48,}|xai-[A-Za-z0-9]{70,}|r8_[A-Za-z0-9]{37}|pplx-[A-Za-z0-9]{48}|AIzaSy[A-Za-z0-9_-]{33}(?=[^\n]*(?:gemini|generativelanguage)))\b/ },
-  { id: "secret-cloud-token", severity: "critical", title: "Cloud or infrastructure token", re: /\b(?:dop_v1_[a-f0-9]{64}|dp\.(?:pt|st|sa|ct)\.[A-Za-z0-9]{40,}|hvs\.[A-Za-z0-9_-]{90,}|[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_=-]{60,}|pul-[a-f0-9]{40}|AGE-SECRET-KEY-1[0-9A-Z]{58}|sntrys_[A-Za-z0-9+/=_-]{60,}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/]{32,}={0,2}|dapi[a-f0-9]{32}(?:-\d)?)\b/ },
+  { id: "secret-cloud-token", severity: "critical", title: "Cloud or infrastructure token", re: /\b(?:dop_v1_[a-f0-9]{64}|dp\.(?:pt|st|sa|ct)\.[A-Za-z0-9]{40,}|hvs\.[A-Za-z0-9_-]{90,}|atlasv1\.(?<=\b[A-Za-z0-9]{14}\.atlasv1\.)[A-Za-z0-9_=-]{60,}|pul-[a-f0-9]{40}|AGE-SECRET-KEY-1[0-9A-Z]{58}|sntrys_[A-Za-z0-9+/=_-]{60,}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|glc_[A-Za-z0-9+/]{32,}={0,2}|dapi[a-f0-9]{32}(?:-\d)?)\b/ },
   { id: "secret-saas-token", severity: "high", title: "SaaS API token", re: /\b(?:shp(?:at|ss|ca|pa)_[a-fA-F0-9]{32}|EAAA[A-Za-z0-9_-]{60}|sq0csp-[A-Za-z0-9_-]{43}|lin_api_[A-Za-z0-9]{40}|ntn_[A-Za-z0-9]{40,}|secret_[A-Za-z0-9]{43}(?=[^\n]*notion)|PMAK-[a-f0-9]{24}-[a-f0-9]{34}|re_[A-Za-z0-9]{8}_[A-Za-z0-9]{24}|key-[0-9a-z]{32}(?=[^\n]*mailgun))\b/i },
   { id: "secret-azure-storage", severity: "critical", title: "Azure storage account key", re: /AccountKey=[A-Za-z0-9+/]{86}==/ },
   { id: "secret-npmrc-token", severity: "critical", title: "Registry auth token in .npmrc", re: /_authToken\s*=\s*(?!\$\{)[A-Za-z0-9_\-.]{20,}/ },
@@ -56,21 +56,29 @@ function jwtClaims(token) {
   try { return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()) || {}; } catch { return {}; }
 }
 
+const JWT = /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
+
 export function scanSecrets(file, text, out) {
   const doc = DOC.test(file.rel);
+  // Most files hold no secret at all: find which rules can match before reading line by line.
+  const rules = SECRET_RULES.filter(r => presentIn(text, r));
+  JWT.lastIndex = 0;
+  const jwt = JWT.test(text), assign = !doc && ASSIGN.test(text);
+  JWT.lastIndex = 0; // matchAll copies lastIndex
+
+  if (!rules.length && !jwt && !assign) return;
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.length > 5000) continue;
     let hit = false;
-    for (const r of SECRET_RULES) {
-      if (suppressedHere(lines, i, file.rel, r.id)) continue;
+    for (const r of rules) {
       const m = r.re.exec(line);
-      if (!m || (r.unless && r.unless.test(line))) continue;
+      if (!m || (r.unless && r.unless.test(line)) || suppressedHere(lines, i, file.rel, r.id)) continue;
       hit = true;
       out.push(finding(r, file.rel, i + 1, line.replace(m[1] ?? m[0], redact(m[1] ?? m[0])), doc ? { confidence: "low" } : {}));
     }
-    for (const m of line.matchAll(/\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g)) {
+    for (const m of jwt ? line.matchAll(JWT) : []) {
       hit = true;
       const claims = jwtClaims(m[0]), role = claims.role;
       // The keys `supabase start` prints are the same for everyone and only work locally.
@@ -82,9 +90,9 @@ export function scanSecrets(file, text, out) {
         : { id: "secret-jwt", category: "secrets", severity: role === "anon" ? "info" : "medium", title: role === "anon" ? "Supabase anon key (public by design)" : "JSON Web Token in the code", confidence: "medium", why: role === "anon" ? "The anon key is meant for browsers; it is only safe if Row Level Security is on for every table." : "A signed token may still be valid and grant access.", fix: role === "anon" ? "Nothing to rotate; make sure RLS is enabled with real policies." : ROTATE };
       out.push(finding(r, file.rel, i + 1, line.replace(m[0], redact(m[0]))));
     }
-    if (hit || doc || suppressedHere(lines, i, file.rel, GENERIC.id)) continue;
+    if (hit || !assign) continue;
     const m = ASSIGN.exec(line);
-    if (!m) continue;
+    if (!m || suppressedHere(lines, i, file.rel, GENERIC.id)) continue;
     const value = m[2];
     if (PLACEHOLDER.test(value) || /process\.env|os\.environ|getenv|import\.meta\.env|\$\{|\{\{|ENV\[|config\(|secrets\.|\benv\(/.test(line)) continue;
     if (entropy(value) < 3.2 || /^[a-z]+$/i.test(value) || /^(https?:|\/|\.\/)/.test(value)) continue;

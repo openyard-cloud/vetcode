@@ -38,18 +38,30 @@ export function finding(rule, file, line, evidence, extra = {}) {
   };
 }
 
+// A line rule that matches no line cannot match the file either, unless it is anchored to the
+// start or end of a line; one pass over the whole text drops most rules for most files.
+const anchored = new WeakMap();
+export function presentIn(text, r) {
+  if (!anchored.has(r)) anchored.set(r, /(^|[^\\])[\^$]/.test(r.re.source.replace(/\\./g, "").replace(/\[[^\]]*\]/g, "")));
+  if (anchored.get(r)) return true;
+  r.re.lastIndex = 0;
+  const hit = r.re.test(text);
+  r.re.lastIndex = 0;
+  return hit;
+}
+
 export function scanLines(file, text, rules, out) {
-  const applicable = rules.filter(r => (!r.files || r.files.test(file.rel)) && !(r.skip && r.skip.test(file.rel)) && (!r.requires || r.requires.test(text)));
+  const applicable = rules.filter(r => (!r.files || r.files.test(file.rel)) && !(r.skip && r.skip.test(file.rel)) && (!r.requires || r.requires.test(text)) && presentIn(text, r));
   if (!applicable.length) return;
   const lines = text.split(/\r?\n/);
+  const longOk = applicable.some(r => r.longLines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.length > 5000 && !applicable.some(r => r.longLines)) continue;
+    if (line.length > 5000 && !longOk) continue;
     for (const r of applicable) {
-      if (suppressedHere(lines, i, file.rel, r.id)) continue;
       r.re.lastIndex = 0;
       const m = r.re.exec(line);
-      if (!m || (r.unless && r.unless.test(line))) continue;
+      if (!m || (r.unless && r.unless.test(line)) || suppressedHere(lines, i, file.rel, r.id)) continue;
       out.push(finding(r, file.rel, i + 1, r.longLines ? m[0] : line));
     }
   }

