@@ -16,6 +16,11 @@ import { vet, VERSION } from "../skills/vetcode/scripts/lib/index.mjs";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const CACHE = path.resolve(arg("--cache", path.join(os.tmpdir(), "vetcode-bench")));
 const OUT = path.resolve(arg("--out", "bench/results"));
+const ONLY = arg("--only", "npm,pypi,skills").split(",");
+// --shard i/n scores every n-th sample starting at i, so n processes can run side by side
+// (merge their JSON with bench/merge.mjs).
+const [SHARD, SHARDS] = arg("--shard", "0/1").split("/").map(Number);
+const mine = list => list.filter((_, i) => i % SHARDS === SHARD);
 const CATS = new Set(["malware", "supply-chain", "agent"]);
 const RANK = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
@@ -69,12 +74,12 @@ async function score(name, items) {
 }
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "vetcode-bench-work-"));
-const archives = (eco, label) => { const d = path.join(CACHE, eco, label); return fs.existsSync(d) ? fs.readdirSync(d).map(f => ({ file: path.join(d, f), id: f, label })) : []; };
+const archives = (eco, label) => { const d = path.join(CACHE, eco, label); return fs.existsSync(d) ? mine(fs.readdirSync(d).sort()).map(f => ({ file: path.join(d, f), id: f, label })) : []; };
 let seq = 0; // unique folder per sample across batches and datasets
 const unpacked = list => list.map(a => { const dir = path.join(work, `${seq++}-${a.label}`); return unpack(a.file, dir) ? { id: a.id, label: a.label, dir, cleanup: true } : null; }).filter(Boolean);
 
 const results = [];
-for (const eco of ["npm", "pypi"]) {
+for (const eco of ["npm", "pypi"].filter(e => ONLY.includes(e))) {
   const list = [...archives(eco, "malicious"), ...archives(eco, "benign")];
   if (!list.length) continue;
   // Unpack and scan in batches so the disk never holds the whole set at once.
@@ -82,11 +87,11 @@ for (const eco of ["npm", "pypi"]) {
   for (let i = 0; i < list.length; i += 200) items.push(...unpacked(list.slice(i, i + 200)));
   results.push(await score(eco, items));
 }
-const skillItems = [...unpacked(archives("skills", "malicious")), ...benignSkills(work).map(s => ({ ...s, label: "benign" }))];
+const skillItems = ONLY.includes("skills") ? [...unpacked(archives("skills", "malicious")), ...mine(benignSkills(work)).map(s => ({ ...s, label: "benign" }))] : [];
 if (skillItems.length) results.push(await score("skills", skillItems));
 remove(work);
 
 fs.mkdirSync(OUT, { recursive: true });
 const stamp = new Date().toISOString().slice(0, 10);
-fs.writeFileSync(path.join(OUT, `${stamp}.json`), JSON.stringify({ version: VERSION, date: stamp, results }, null, 2));
+fs.writeFileSync(path.join(OUT, `${stamp}${SHARDS > 1 ? `.shard${SHARD}` : ""}.json`), JSON.stringify({ version: VERSION, date: stamp, results }, null, 2));
 console.error(`results: ${path.join(OUT, stamp + ".json")}`);

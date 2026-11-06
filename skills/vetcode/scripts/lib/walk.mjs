@@ -3,14 +3,19 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const SKIP_DIRS = new Set([
+export const SKIP_DIRS = new Set([
   ".git", "node_modules", "bower_components", "jspm_packages", "vendor", "dist", "build", "out",
   ".next", ".nuxt", ".svelte-kit", ".output", ".vercel", ".netlify", ".wrangler", ".turbo", ".cache",
   ".parcel-cache", "coverage", ".nyc_output", "__pycache__", ".venv", "venv", "env", ".tox", ".mypy_cache",
   ".pytest_cache", ".ruff_cache", "site-packages", "target", ".gradle", ".idea", "Pods", "DerivedData",
   ".terraform", ".serverless", ".expo", ".dart_tool", "playwright-report", "test-results", "storybook-static",
 ]);
-const BINARY = /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|tiff?|psd|heic|mp[34]|m4a|mov|avi|mkv|webm|wav|ogg|flac|pdf|docx?|xlsx?|pptx?|zip|gz|tgz|bz2|xz|7z|rar|jar|war|ear|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|sqlite3?|db|pyc|pyo|node|dat|keystore|jks|p12|pfx|der|crt|cer)$/i;
+// Without git there is no .gitignore to tell build output from source, and a downloaded package
+// ships its code in dist/ or build/ (the rand-user-agent RAT lived in dist/index.js), so only
+// dependency and tool-cache folders are skipped then.
+export const SKIP_DIRS_NO_GIT = new Set([...SKIP_DIRS].filter(d => !["dist", "build", "out", "target", "lib"].includes(d)));
+
+export const BINARY = /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|tiff?|psd|heic|mp[34]|m4a|mov|avi|mkv|webm|wav|ogg|flac|pdf|docx?|xlsx?|pptx?|zip|gz|tgz|bz2|xz|7z|rar|jar|war|ear|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|sqlite3?|db|pyc|pyo|node|dat|keystore|jks|p12|pfx|der|crt|cer)$/i;
 export const MAX_BYTES = 1_000_000;
 
 // A tiny gitignore-style matcher: `*`, `**`, `?`, a leading `/` anchors, a trailing `/` means a folder.

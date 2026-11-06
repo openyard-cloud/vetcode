@@ -21,6 +21,15 @@ export function markdown(result) {
   if (stats.baselined) out.push(``, `${stats.baselined} finding(s) already in the baseline are not shown.`);
   if (stats.mcpLock) out.push(``, `MCP lock: ${stats.mcpLock}.`);
   if (stats.partial?.length) out.push(``, `> ⚠️ ${stats.partial.length} file(s) over 1 MB were only partly read (first and last 256 KB, secrets and malware checks): ${stats.partial.slice(0, 5).map(p => code(p.file)).join(", ")}${stats.partial.length > 5 ? " …" : ""}. Read them yourself if they are not known bundles.`);
+  const told = (result.profiles || []).filter(p => Object.keys(p.capabilities).length);
+  if (told.length) {
+    out.push(``, `## What it says vs what it does`, ``);
+    for (const p of told.slice(0, 8)) out.push(`- **${p.name}** (${p.kind}): "${(p.purpose || "no description").slice(0, 100)}" → ${Object.entries(p.capabilities).map(([c, fs]) => `${c} (${fs.length} file${fs.length > 1 ? "s" : ""})`).join("; ")}`);
+  }
+  if (result.surprises?.length) {
+    out.push(``, `## Read these files first`, ``, `The strangest files in the project, whether or not a rule fired: check that the project's purpose explains each one.`, ``);
+    for (const s of result.surprises) out.push(`- ${code(s.file)} · ${s.why}`);
+  }
   if (!findings.length) {
     out.push(``, `No candidates found. This is not proof of safety: logic flaws, authorization gaps and new malware need a manual review.`);
     return out.join("\n") + "\n";

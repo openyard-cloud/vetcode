@@ -1,0 +1,559 @@
+{
+ "version": "0.2.0",
+ "date": "2026-11-05",
+ "results": [
+  {
+   "name": "npm",
+   "samples": {
+    "malicious": 1000,
+    "benign": 999
+   },
+   "metrics": {
+    "high": {
+     "tp": 852,
+     "fn": 148,
+     "fp": 65,
+     "tn": 934,
+     "precision": 0.9291166848418757,
+     "recall": 0.852,
+     "f1": 0.888888888888889,
+     "accuracy": 0.8934467233616809,
+     "fpr": 0.06506506506506507
+    },
+    "critical": {
+     "tp": 555,
+     "fn": 445,
+     "fp": 4,
+     "tn": 995,
+     "precision": 0.9928443649373881,
+     "recall": 0.555,
+     "f1": 0.7119948685054521,
+     "accuracy": 0.7753876938469234,
+     "fpr": 0.004004004004004004
+    }
+   },
+   "rulesOnMalicious": [
+    [
+     "install-time-capabilities",
+     517
+    ],
+    [
+     "mal-oast-endpoint",
+     223
+    ],
+    [
+     "install-script-suspicious",
+     102
+    ],
+    [
+     "library-entry-capabilities",
+     99
+    ],
+    [
+     "mal-obfuscator",
+     93
+    ],
+    [
+     "package-name-typosquat",
+     74
+    ],
+    [
+     "mal-recon-exfil",
+     50
+    ],
+    [
+     "dep-typosquat",
+     16
+    ],
+    [
+     "mal-reverse-shell",
+     15
+    ],
+    [
+     "mal-dns-exfil",
+     13
+    ],
+    [
+     "mal-env-exfil",
+     10
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     4
+    ],
+    [
+     "setup-py-runs-code",
+     2
+    ],
+    [
+     "mal-miner",
+     2
+    ],
+    [
+     "mal-hex-escapes",
+     2
+    ],
+    [
+     "mal-invisible-payload",
+     2
+    ],
+    [
+     "anom-sandbox-evasion",
+     1
+    ],
+    [
+     "mal-powershell-encoded",
+     1
+    ],
+    [
+     "mal-download-exec",
+     1
+    ],
+    [
+     "mal-disable-security",
+     1
+    ]
+   ],
+   "rulesOnBenign": [
+    [
+     "library-entry-capabilities",
+     35
+    ],
+    [
+     "dep-typosquat",
+     17
+    ],
+    [
+     "package-name-typosquat",
+     4
+    ],
+    [
+     "mal-dns-exfil",
+     2
+    ],
+    [
+     "lock-foreign-source",
+     2
+    ],
+    [
+     "mal-eval-base64",
+     2
+    ],
+    [
+     "anom-whitespace-hidden",
+     1
+    ],
+    [
+     "anom-homoglyph-identifier",
+     1
+    ],
+    [
+     "mal-bidi-chars",
+     1
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     1
+    ],
+    [
+     "gha-github-env-injection",
+     1
+    ],
+    [
+     "mal-download-exec",
+     1
+    ],
+    [
+     "install-script-suspicious",
+     1
+    ],
+    [
+     "anom-targeted-payload",
+     1
+    ],
+    [
+     "install-time-capabilities",
+     1
+    ]
+   ],
+   "missed": [
+    "@12build##segment-js-sdk__1.432.3__segment-js-sdk-1.432.3.tgz",
+    "axelhowe__6Wc306Dt__axelhowe-0.0.0-6Wc306Dt.tgz",
+    "blockchain-contracts__5.0.4__blockchain-contracts-5.0.4.tgz",
+    "braintree-utilities__10.6.0__braintree-utilities-10.6.0.tgz",
+    "discordjs-v16__11.5.1__discordjs-v16-11.5.1.tgz",
+    "dom-seriaiizer__1.2.0__dom-seriaiizer-1.2.0.tgz",
+    "fadam-com-test-1__1.999.0__fadam-com-test-1-1.999.0.tgz",
+    "finalact__1.1.5__finalact-1.1.5.tgz",
+    "libubx__1.0.3__libubx-1.0.3.tgz",
+    "my-very-own-package__1.0.1__my-very-own-package-1.0.1.tgz",
+    "nextcapital-client-demo__7.7.7__nextcapital-client-demo-7.7.7.tgz",
+    "oauth_tutorial__1.0.2__oauth_tutorial-1.0.2.tgz",
+    "only-test-not-install__1.0.3__only-test-not-install-1.0.3.tgz",
+    "react-datepicker-plus__2.4.2__react-datepicker-plus-2.4.2.tgz",
+    "sdfjghlkfjdshlkjdhsfg__1.0.2__sdfjghlkfjdshlkjdhsfg-1.0.2.tgz",
+    "sshwifty__6.0.2__sshwifty-6.0.2.tgz",
+    "sync-axios__1.0.5__sync-axios-1.0.5.tgz",
+    "unieap-spring__2.2.1__unieap-spring-2.2.1.tgz",
+    "viseshthemed__1.0.15__viseshthemed-1.0.15.tgz",
+    "warbeast2000__1.0.2__warbeast2000-1.0.2.tgz",
+    "web3-provider-patchers__1.0.1__web3-provider-patchers-1.0.1.tgz",
+    "wf_scheduler__96.10.9__wf_scheduler-96.10.9.tgz",
+    "2e6d5f64604be31__1.0.0__2e6d5f64604be31-1.0.0.tgz",
+    "@12build##segment-js-sdk__2.433.3__segment-js-sdk-2.433.3.tgz",
+    "@tide-web-apps##bert2__2.2.0__bert2-2.2.0.tgz",
+    "axelhowe__AH4rx5lCb6fx5eEf__axelhowe-0.0.0-AH4rx5lCb6fx5eEf.tgz",
+    "axios-replace__1.0.0__axios-replace-1.0.0.tgz",
+    "bfs-hello-world__98.10.13__bfs-hello-world-98.10.13.tgz",
+    "camera-kit-react-native-example__1.0.7__2024-11-12-camera-kit-react-native-example-v1.0.7.tgz",
+    "chainflowpro__5.0.5__chainflowpro-5.0.5.tgz",
+    "ember-views-0.9.0__zendesk__ember-views-0.9.0-zendesk.tgz",
+    "finalact__1.1.8__finalact-1.1.8.tgz",
+    "mixtral-llm__1.0.3__mixtral-llm-1.0.3.tgz",
+    "npj4__1.0.52__2024-10-31-npj4-v1.0.52.tgz",
+    "object-color__1.0.6__object-color-1.0.6.tgz",
+    "rate-map__1.0.4__rate-map-1.0.4.tgz",
+    "react-spa__35.0.0__react-spa-35.0.0.tgz",
+    "sonatype__2.0.7__sonatype-2.0.7.tgz",
+    "tslib-tool__1.6.1__tslib-tool-1.6.1.tgz",
+    "viseshthemed__1.0.8__viseshthemed-1.0.8.tgz",
+    "www-site__3.0.2__www-site-3.0.2.tgz",
+    "yinhai-cloud__6.0.3__yinhai-cloud-6.0.3.tgz",
+    "30-days-of-javascript__6.0.2__30-days-of-javascript-6.0.2.tgz",
+    "@tide-web-apps##bert2__3.0.0__bert2-3.0.0.tgz",
+    "@wdpx##themes__6.2.1__themes-6.2.1.tgz",
+    "ali-in-wlnd-test-1__0.0.3__ali-in-wlnd-test-1-0.0.3.tgz",
+    "autoprifixir__8.7.6__autoprifixir-8.7.6.tgz",
+    "axelhowe__VSslJhaE__axelhowe-0.0.0-VSslJhaE.tgz",
+    "coa__2.1.3__coa-2.1.3.tgz",
+    "component-emiter__1.8.5__component-emiter-1.8.5.tgz"
+   ]
+  },
+  {
+   "name": "pypi",
+   "samples": {
+    "malicious": 300,
+    "benign": 198
+   },
+   "metrics": {
+    "high": {
+     "tp": 197,
+     "fn": 103,
+     "fp": 35,
+     "tn": 163,
+     "precision": 0.8491379310344828,
+     "recall": 0.6566666666666666,
+     "f1": 0.7406015037593985,
+     "accuracy": 0.7228915662650602,
+     "fpr": 0.17676767676767677
+    },
+    "critical": {
+     "tp": 80,
+     "fn": 220,
+     "fp": 3,
+     "tn": 195,
+     "precision": 0.963855421686747,
+     "recall": 0.26666666666666666,
+     "f1": 0.4177545691906005,
+     "accuracy": 0.5522088353413654,
+     "fpr": 0.015151515151515152
+    }
+   },
+   "rulesOnMalicious": [
+    [
+     "setup-py-runs-code",
+     158
+    ],
+    [
+     "mal-powershell-encoded",
+     55
+    ],
+    [
+     "mal-oast-endpoint",
+     45
+    ],
+    [
+     "mal-reverse-shell",
+     16
+    ],
+    [
+     "mal-py-exec-decoded",
+     9
+    ],
+    [
+     "mal-hex-escapes",
+     5
+    ],
+    [
+     "mal-download-exec",
+     4
+    ],
+    [
+     "anom-whitespace-hidden",
+     3
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     3
+    ],
+    [
+     "mal-recon-exfil",
+     2
+    ],
+    [
+     "mal-pth-autorun",
+     2
+    ],
+    [
+     "mal-disable-security",
+     1
+    ]
+   ],
+   "rulesOnBenign": [
+    [
+     "setup-py-runs-code",
+     14
+    ],
+    [
+     "mal-dns-exfil",
+     8
+    ],
+    [
+     "dep-typosquat",
+     4
+    ],
+    [
+     "mal-download-exec",
+     3
+    ],
+    [
+     "git-hook-suspicious",
+     2
+    ],
+    [
+     "mal-reverse-shell",
+     2
+    ],
+    [
+     "mal-bidi-chars",
+     2
+    ],
+    [
+     "mal-hex-escapes",
+     2
+    ],
+    [
+     "anom-stego-loader",
+     1
+    ],
+    [
+     "mal-worm-markers",
+     1
+    ],
+    [
+     "mal-pth-autorun",
+     1
+    ],
+    [
+     "mal-oast-endpoint",
+     1
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     1
+    ],
+    [
+     "anom-homoglyph-identifier",
+     1
+    ],
+    [
+     "mal-recon-exfil",
+     1
+    ]
+   ],
+   "missed": [
+    "2022-11-08-darknegrobbc.zip",
+    "2022-11-08-xoloytubfihhsa.zip",
+    "2022-11-14-J3y5r.zip",
+    "2022-11-16-salamus3.zip",
+    "2023-03-14-pycrypterexe-v1.1.0.zip",
+    "2023-03-21-reverse-shell-v1.5.zip",
+    "2023-04-27-libidreq-v0.1.zip",
+    "2023-05-07-colorara-v0.1.zip",
+    "2023-06-18-http3-client-v1.0.0.1.zip",
+    "2024-05-01-crytic-compilers-v0.3.8.zip",
+    "2024-05-27-dpndncyconfusion-v0.1.zip",
+    "2024-07-14-raydium-v2.1.6.zip",
+    "2024-09-09-pyadd-v0.1.1.zip",
+    "2024-11-07-artifact-lab-3-package-02f73e0e-v1.0.3.zip",
+    "2025-01-19-mlc-ai-nightly-cu123-v9.9.9.zip",
+    "2025-05-19-ai-labs-snippets-sdk-v2.2.0.zip",
+    "2025-11-14-spellcheckers-v1.2.0.zip",
+    "2026-04-01-kube-health-tools-v1.0.1.zip",
+    "2022-11-08-pussysus.zip",
+    "2022-11-09-kayauthgen.zip",
+    "2022-11-14-mysqlloadup.zip",
+    "2022-11-16-salamus6.zip",
+    "2022-12-12-fequests.zip",
+    "2023-03-14-pycrypterexe-v1.1.1.zip",
+    "2023-04-29-cloud-client-v1.34.zip",
+    "2023-05-09-sobit-ishlar-v0.1.zip",
+    "2023-06-18-http3-client-v1.0.11.zip",
+    "2024-07-31-mlc-ai-nightly-v0.0.1.zip",
+    "2024-09-11-automsg-v0.0.1.zip",
+    "2024-09-28-cryptograohy-v0.6.0.zip",
+    "2024-10-30-hmac2-v0.0.2rc0.zip",
+    "2025-04-30-synapse-sso-proconnect-v0.0.2.zip",
+    "2025-05-19-ai-labs-snippets-sdk-v3.4.0.zip",
+    "2026-02-12-b10connoisseur-v0.4.0.zip",
+    "2026-04-01-kube-health-tools-v1.0.11.zip",
+    "2026-04-17-restasv3-v99.99.1.zip",
+    "2022-11-08-robonotif.zip",
+    "2022-11-16-coloroma.zip",
+    "2022-12-12-requeste.zip",
+    "2022-12-22-botocote.zip",
+    "2023-03-09-testinglmao123-v0.69.zip",
+    "2023-04-22-forgepy-v1.0.1.zip",
+    "2023-04-29-cloudfix-v0.0.0.zip",
+    "2023-05-27-myshit12223-v1.0.zip",
+    "2023-06-18-http3-client-v1.0.18.zip",
+    "2024-09-13-roinject-v0.0.1.zip",
+    "2024-09-28-cryptograohy-v0.7.0.zip",
+    "2025-02-05-pxz-v1.1.10.zip",
+    "2025-05-19-ai-labs-snippets-sdk-v3.5.0.zip",
+    "2025-07-22-termncolor-v3.1.0.zip"
+   ]
+  },
+  {
+   "name": "skills",
+   "samples": {
+    "malicious": 204,
+    "benign": 132
+   },
+   "metrics": {
+    "high": {
+     "tp": 58,
+     "fn": 146,
+     "fp": 4,
+     "tn": 128,
+     "precision": 0.9354838709677419,
+     "recall": 0.28431372549019607,
+     "f1": 0.43609022556390975,
+     "accuracy": 0.5535714285714286,
+     "fpr": 0.030303030303030304
+    },
+    "critical": {
+     "tp": 4,
+     "fn": 200,
+     "fp": 0,
+     "tn": 132,
+     "precision": 1,
+     "recall": 0.0196078431372549,
+     "f1": 0.038461538461538464,
+     "accuracy": 0.40476190476190477,
+     "fpr": 0
+    }
+   },
+   "rulesOnMalicious": [
+    [
+     "agent-instruction-injection",
+     53
+    ],
+    [
+     "mal-invisible-payload",
+     2
+    ],
+    [
+     "mal-reverse-shell",
+     2
+    ],
+    [
+     "mal-download-exec",
+     1
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     1
+    ],
+    [
+     "dep-typosquat",
+     1
+    ],
+    [
+     "mal-py-exec-decoded",
+     1
+    ],
+    [
+     "mal-miner",
+     1
+    ],
+    [
+     "mal-disable-security",
+     1
+    ]
+   ],
+   "rulesOnBenign": [
+    [
+     "agent-instruction-injection",
+     3
+    ],
+    [
+     "behaviour-purpose-mismatch",
+     1
+    ]
+   ],
+   "missed": [
+    "3bkader-gpt-malicious-skill-poc-malicious-skill-poc.zip",
+    "Charpup-skill-security-auditor-dependency-confusion-skill.zip",
+    "ZackKorman-skills-audit.zip",
+    "abpai-skills-codex.zip",
+    "avivk5498-claude-code-beads-orchestration-dot-claude-skills-create-beads-orchestration.zip",
+    "boomsystel-code-openclaw-workspace-skills-mia-twitter-stealth.zip",
+    "cisco-ai-defense-skill-scanner-file-validator.zip",
+    "dauquangthanh-hanoi-rainbow-skills-rpg-migration-analyzer.zip",
+    "dreamineering-meme-times-dot-claude-skills-community-architect.zip",
+    "feed-mob-agent-skills-skills-civitai-analyst.zip",
+    "h1paastha-test-skill.zip",
+    "mitsuhiko-agent-commands-skills-google-workspace.zip",
+    "one-box-u-openclaw-daily-hot-news.zip",
+    "openclaw-thiagoruss0-bear-notes7mcp.zip",
+    "openclaw-thiagoruss0-instagramjg.zip",
+    "openclaw-thiagoruss0-pptx-creatord.zip",
+    "openclaw-thiagoruss0-tavily-web-searchajss.zip",
+    "openclaw-thiagoruss0-veo3-genay.zip",
+    "openclaw-thiagoruss0-youtubea.zip",
+    "plurigrid-asi-skills-aqua-voice-malleability.zip",
+    "sanjay3290-ai-skills-skills-gmail.zip",
+    "sanjay3290-postgres-skill-skills-google-docs.zip",
+    "sundial-org-awesome-openclaw-skills-skills-deep-research.zip",
+    "sundial-org-awesome-openclaw-skills-skills-vercel-deploy.zip",
+    "3bkader-gpt-malicious-skill-poc.zip",
+    "Charpup-skill-security-auditor-malicious-code-execution-skill.zip",
+    "ZackKorman-skills-openclaw-admin-security-breakglass.zip",
+    "agentinsync-agentinsync-skill.zip",
+    "cisco-ai-defense-skill-scanner-database-query.zip",
+    "cisco-ai-defense-skill-scanner-infinite-loop.zip",
+    "devxoul-agent-messenger-skills-agent-discord.zip",
+    "dreamineering-meme-times-dot-claude-skills-meme-pumper.zip",
+    "galz10-pickle-rick-extension-skills-load-pickle-persona.zip",
+    "henryxv-study-platform-dot-agent-skills-vercel-deploy.zip",
+    "manojbajaj95-gtm-skills-skills-community-architect.zip",
+    "mitsuhiko-agent-stuff-skills-google-workspace.zip",
+    "openclaw-thiagoruss0-clawdbot-logs1kzm.zip",
+    "openclaw-thiagoruss0-deep-researchj.zip",
+    "openclaw-thiagoruss0-jirayb4nt.zip",
+    "openclaw-thiagoruss0-tavily-web-searchesq.zip",
+    "openclaw-thiagoruss0-web-searchod.zip",
+    "parcadei-continuous-claude-v3-dot-claude-skills-git-commits.zip",
+    "plurigrid-asi-skills-vercel-deploy.zip",
+    "sanjay3290-ai-skills-skills-google-drive.zip",
+    "sanjay3290-postgres-skill-skills-google-sheets.zip",
+    "sundial-org-awesome-openclaw-skills-skills-deepwork-tracker.zip",
+    "syncause-debug-skill-skills-syncause-debugger.zip",
+    "Charpup-skill-security-auditor-backdoor-skill.zip",
+    "Charpup-skill-security-auditor-network-egress-skill.zip",
+    "aaaaqwq-agi-super-skills-skills-deepwork-tracker.zip"
+   ]
+  }
+ ]
+}

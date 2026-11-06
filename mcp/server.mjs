@@ -20,7 +20,7 @@ const MAX_FINDINGS = 150;
 
 // The skill's own text, minus front matter, so non-skill agents get the same instructions.
 const guide = () => fs.readFileSync(path.join(SKILL, "SKILL.md"), "utf8").replace(/^---[\s\S]*?---\s*/, "")
-  .replace(/## 2\. Run the scanner[\s\S]*?(?=## 3\.)/, "## 2. Run the scanner\n\nCall the `vetcode_scan` tool with the folder to check and the options from the table above (`online`, `deps`, `history`, `diff`, `no_ignore`). It returns the report and the findings as JSON. Use `vetcode_reference` to load a checklist when step 4 asks for one.\n\n");
+  .replace(/## 2\. Run the scanner[\s\S]*?(?=## 3\.)/, "## 2. Run the scanner\n\nCall the `vetcode_scan` tool with the folder to check and the options from the table above (`online`, `deps`, `history`, `diff`, `no_ignore`). It returns the report and the findings as JSON. Use `vetcode_reference` to load a checklist when step 5 asks for one.\n\n");
 
 const TOOLS = [
   {

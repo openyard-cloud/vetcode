@@ -31,4 +31,19 @@ node bench/summary.mjs bench/results
 rm -rf /tmp/vetcode-bench
 ```
 
-`fetch.mjs` refuses to start with less than 5 GB free.
+`fetch.mjs` refuses to start with less than 5 GB free. Score in parallel with
+`--shard i/n` (one process per shard) and combine with `node bench/merge.mjs <out>`.
+
+## Advanced techniques (red team)
+
+```bash
+node bench/redteam.mjs            # this build
+node bench/redteam.mjs --lib <path to another build>/skills/vetcode/scripts/lib/index.mjs
+```
+
+Twelve techniques from 2025–2026 campaigns that the public datasets barely contain (code
+pushed off-screen in dist/, GlassWorm Unicode payloads, payloads in images, protestware,
+time bombs, sandbox evasion, homoglyphs, disguised executables, purpose mismatch, recon
+beacons, ClawHavoc-style skills, skills that hide actions), each next to a clean look-alike.
+Samples are generated at run time and carry no working payload. The set was built
+alongside the rules, so it measures coverage, not an independent detection rate.

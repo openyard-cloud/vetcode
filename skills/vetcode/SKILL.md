@@ -43,7 +43,7 @@ node "<skill-dir>/scripts/vet.mjs" <target> --json "$TMPDIR/vetcode.json" [optio
 
 Options: `--online`, `--deps`, `--history`, `--diff [base]`, `--no-ignore`, `--no-tools`, `--baseline <old.json>` (show only findings not in an earlier report), `--mcp-lock <file>` (remember the project's MCP servers and tool descriptions; later runs report changes), `--sarif <file>`, `--fail-on <severity>`, `--quiet`. It prints a Markdown summary and writes every finding to the JSON file. It reads what git sees (tracked + untracked, minus `.gitignore`); outside git it reads everything except dependency and build folders. If gitleaks, zizmor, semgrep, osv-scanner or trivy are installed it uses them too (semgrep, osv-scanner and trivy only with `--online`).
 
-If Node is not available, skip to step 4 and review by hand with the reference checklists, saying so in the report.
+If Node is not available, skip to step 5 and review by hand with the reference checklists, saying so in the report.
 
 ## 3. Triage every candidate
 
@@ -62,7 +62,17 @@ With many candidates (roughly 15+), triage them in parallel if you can start sub
 
 **Do not report** (these drown real issues): denial of service and resource exhaustion, missing rate limits (unless on login/OTP/payment/AI-cost endpoints), theoretical race conditions, outdated dependencies without a known advisory (OSV covers those), log injection, regex DoS, missing hardening headers on their own, issues only in tests, examples or local dev tooling, and "missing auth" in client-side code (the server is what must check). Treat environment variables, CLI flags and the project's own config as trusted input; React/Vue/Svelte/Angular escape output by default except in their raw-HTML escape hatches.
 
-## 4. Review what patterns cannot see
+## 4. Hunt for the unexpected
+
+The scanner also returns what no rule can judge alone; this is where new attacks show up:
+
+- **What it says vs what it does** (`profiles` in the JSON, a section in the report): for each package, skill or Python project, its stated purpose next to the files that use the network, start programs, read secrets or write into home folders. Ask of each: does the purpose explain this? A formatter, a theme or a "helper" skill with network and process access needs a reason you can point to.
+- **Read these files first** (`surprises`): the strangest files whether or not a rule fired (dangerous capabilities together, packed or high-entropy code, invisible characters). Open every one of them.
+- **How the release came to exist** (with `--online`, npm): provenance or trusted publishing that disappeared, a publisher never seen before, an install script added in this release, a release only hours old. Treat these as reasons to pin the previous version until explained.
+
+Then look at what is not code: binaries and assets the code reads, files in `dist/` that do not match the source, tests and examples that run on install, and prose in skills or READMEs that asks someone to download and run something.
+
+## 5. Review what patterns cannot see
 
 Load only the references that match the stack:
 
@@ -73,7 +83,7 @@ Load only the references that match the stack:
 
 For an app, at minimum: list the routes/handlers/server actions and check each one for authentication **and** authorization on the specific object (can user A read or change user B's record by changing an id?). This is the most common serious bug and no regex finds it.
 
-## 5. Report
+## 6. Report
 
 Write in the user's language (Vietnamese if they wrote Vietnamese). Structure:
 
@@ -84,7 +94,7 @@ Write in the user's language (Vietnamese if they wrote Vietnamese). Structure:
 
 Severity: **critical** = exploitable now for full compromise, data theft or running code (malware, live production secret, SQLi/RCE on a public route, open database). **high** = serious and likely exploitable (stored XSS, IDOR on private data, SSRF, secret in git history). **medium** = needs extra conditions or limited impact. **low** = hardening. **info** = for awareness.
 
-## 6. Fix (when the user agrees)
+## 7. Fix (when the user agrees)
 
 - Make the smallest change that removes the vulnerability; keep the code's style. Re-run the scanner on the changed files (`--diff`) afterwards.
 - **Leaked secret:** rotate it at the provider first (assume it is copied), then move it to the environment, then remove it from code; purging git history (git filter-repo) only helps if nobody cloned it yet, so rotation is what matters.
