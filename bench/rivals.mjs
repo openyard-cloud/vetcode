@@ -39,8 +39,51 @@ function guarddog(eco, dir) {
 }
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "vetcode-rivals-"));
+// Cisco skill-scanner, static + behavioural analysers (no LLM, the counterpart of vetcode's
+// rules). Verdicts: max severity HIGH/CRITICAL, MEDIUM or worse, any finding; best one kept.
+function skillScanner(dir) {
+  const r = spawnSync(BIN, ["scan", dir, "--format", "json", "--use-behavioral"], { encoding: "utf8", timeout: 300_000, maxBuffer: 64 << 20, cwd: os.tmpdir() });
+  const start = (r.stdout || "").indexOf("{");
+  try {
+    const j = JSON.parse(r.stdout.slice(start)), sev = String(j.max_severity || "SAFE").toUpperCase();
+    return { rules: (j.findings || []).map(f => f.rule_id || f.category || "finding"), verdicts: { high: ["HIGH", "CRITICAL"].includes(sev), medium: ["MEDIUM", "HIGH", "CRITICAL"].includes(sev), any: (j.findings_count || 0) > 0 } };
+  } catch { return { error: true, rules: [], verdicts: { high: false, medium: false, any: false } }; }
+}
+const skillDirs = root => { const out = []; (function walk(d) { let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } if (es.some(e => e.isFile() && e.name === "SKILL.md")) { out.push(d); return; } for (const e of es) if (e.isDirectory()) walk(path.join(d, e.name)); })(root); return out; };
+
 const results = [];
-for (const eco of ["npm", "pypi"].filter(e => ONLY.includes(e))) {
+if (TOOL === "skill-scanner" && ONLY.includes("skills")) {
+  const rows = [];
+  const mal = path.join(CACHE, "skills", "malicious");
+  for (const f of (fs.existsSync(mal) ? fs.readdirSync(mal).sort() : []).filter((_, i) => i % SHARDS === SHARD)) {
+    const dir = path.join(work, `skill-${f}`);
+    if (!unpack(path.join(mal, f), dir)) { remove(dir); continue; }
+    const target = skillDirs(dir)[0] || dir;
+    rows.push({ id: f, label: "malicious", ...skillScanner(target) });
+    remove(dir);
+  }
+  const col = path.join(CACHE, "skills", "benign-collections");
+  for (const f of fs.existsSync(col) ? fs.readdirSync(col).sort() : []) {
+    const dir = path.join(work, `col-${f}`);
+    if (!unpack(path.join(col, f), dir)) continue;
+    for (const [i, d] of skillDirs(dir).entries()) if (i % SHARDS === SHARD) rows.push({ id: `${f}:${path.basename(d)}`, label: "benign", ...skillScanner(d) });
+    remove(dir);
+  }
+  const metrics = {};
+  for (const v of ["high", "medium", "any"]) {
+    const c = { tp: 0, fn: 0, fp: 0, tn: 0 };
+    for (const r of rows) c[r.label === "malicious" ? (r.verdicts[v] ? "tp" : "fn") : (r.verdicts[v] ? "fp" : "tn")]++;
+    const p = c.tp / (c.tp + c.fp || 1), rc = c.tp / (c.tp + c.fn || 1);
+    metrics[`sev_${v}`] = { ...c, precision: p, recall: rc, f1: 2 * p * rc / (p + rc || 1), accuracy: (c.tp + c.tn) / (rows.length || 1), fpr: c.fp / (c.fp + c.tn || 1) };
+  }
+  const best = Object.entries(metrics).sort((a, b) => b[1].f1 - a[1].f1)[0];
+  metrics.high = { ...best[1], verdict: best[0] };
+  results.push({ name: "skills", samples: { malicious: rows.filter(r => r.label === "malicious").length, benign: rows.filter(r => r.label === "benign").length }, metrics,
+    rulesOnMalicious: [], rulesOnBenign: [], missed: rows.filter(r => r.label === "malicious" && !r.verdicts[best[0].replace("sev_", "")]).map(r => r.id),
+    falseAlarms: rows.filter(r => r.label === "benign" && r.verdicts[best[0].replace("sev_", "")]).map(r => ({ id: r.id, rules: r.rules.slice(0, 5) })), errors: rows.filter(r => r.error).length });
+  console.error(`skill-scanner skills: ${rows.length} samples · best F1 ${(metrics.high.f1 * 100).toFixed(1)}% (${best[0]}) · ${Object.entries(metrics).filter(([k]) => k !== "high").map(([k, m]) => `${k} ${(m.f1 * 100).toFixed(1)} (recall ${(m.recall * 100).toFixed(1)}, fpr ${(m.fpr * 100).toFixed(1)})`).join(", ")} · errors ${results.at(-1).errors}`);
+}
+for (const eco of ["npm", "pypi"].filter(e => ONLY.includes(e) && TOOL === "guarddog")) {
   const rows = [];
   for (const label of ["malicious", "benign"]) {
     const d = path.join(CACHE, eco, label);

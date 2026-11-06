@@ -126,6 +126,7 @@ function checkOtherLocks(file, text, out) {
 }
 
 function checkRequirements(file, text, out) {
+  stealerKit(file, text, out);
   text.split(/\r?\n/).forEach((raw, i) => {
     const line = raw.replace(/#.*/, "").trim();
     if (!line) return;
@@ -153,6 +154,7 @@ function checkRequirements(file, text, out) {
 }
 
 function checkPyproject(file, text, out) {
+  stealerKit(file, text, out);
   const names = new Set();
   for (const m of text.matchAll(/^\s*(?:dependencies|[\w-]+)\s*=\s*\[([\s\S]*?)\]/gm)) {
     if (!/^\s*dependencies|optional-dependencies/.test(text.slice(Math.max(0, m.index - 200), m.index + 20)) && !/^\s*dependencies/.test(m[0])) continue;
@@ -162,7 +164,32 @@ function checkPyproject(file, text, out) {
   for (const n of names) { const like = lookalike(n, TARGET_PYPI, POPULAR_SCOPES, KNOWN_PYPI); if (like && n.toLowerCase() !== "python") out.push(finding(TYPO, file.rel, lineIn(text, n), `"${n}" looks like "${like}"`)); }
 }
 
+const INSTALL_CMD = /class\s+\w+\s*\(\s*(?:\w+\.)?(?:install|develop|egg_info|build_py|build_ext|sdist|bdist_\w+)\s*\)/;
+// Libraries that turn up in stealers' dependency lists far more than anywhere else.
+const STEALER_KIT = /\b(?:browser[_-]?cookie3?|discord[_-]?webhook|discordwebhook|dhooks|robloxpy|pyautogui|pynput|pycryptodomex?|win32crypt|pypiwin32|pywin32|getmac|psutil|pyperclip)\b/gi;
+
+function stealerKit(file, text, out) {
+  const names = new Set((text.match(STEALER_KIT) || []).map(n => n.toLowerCase().replace(/[_-]/g, "")));
+  const core = [...names].filter(n => /browsercookie|discordwebhook|dhooks|robloxpy/.test(n));
+  if (!core.length || names.size < 2 && !/browsercookie/.test(core[0])) return;
+  const at = text.search(STEALER_KIT);
+  out.push(finding(rule({ id: "dep-stealer-kit", severity: "high", confidence: "high", title: "Depends on a credential-stealer toolkit",
+    why: `It pulls in ${[...names].join(", ")}: browser-cookie and chat-webhook libraries together are the building blocks of token and password stealers.`,
+    fix: "Unless the project is plainly a tool for your own browser data, do not install it." }), file.rel, lineOf(text, at), [...names].join(", ")));
+}
+
 function checkSetupPy(file, text, out) {
+  stealerKit(file, text, out);
+  if (INSTALL_CMD.test(text) && /cmdclass/.test(text)) {
+    // Compiling extensions with subprocess is normal; an install-time command that talks to the
+    // network, runs decoded code, posts to a webhook or starts an .exe is not.
+    const onInstall = /class\s+\w+\s*\(\s*(?:\w+\.)?(?:install|develop|egg_info)\s*\)/.test(text);
+    const acts = onInstall && /\b(?:requests\.|urllib|urlopen|urlretrieve|socket\.|exec\s*\(|eval\s*\(|startfile|Webhook|webhook|curl|wget|\.exe\b|powershell|Fernet|b64decode)/.exec(text);
+    out.push(finding(rule({ id: "setup-py-install-command", severity: acts ? "high" : "medium", confidence: acts ? "high" : "medium",
+      title: acts ? "setup.py overrides the install command to run code" : "setup.py overrides the install command",
+      why: "A custom install command runs during `pip install` with your rights; malicious packages use it to download, beacon or start a payload before any code is imported.",
+      fix: "Read the overridden run() method; install from a wheel or with --no-build-isolation in a throwaway environment if you must." }), file.rel, lineOf(text, text.search(INSTALL_CMD)), acts ? `install command + ${acts[0]}` : text.match(INSTALL_CMD)[0]));
+  }
   const m = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.|subprocess\.|os\.system|os\.popen|exec\s*\(|eval\s*\(|socket\.|base64\.b64decode|__import__\()/.exec(text);
   if (!m) return;
   // Building C extensions or reading git tags needs subprocess; fetching or decoding code does not.
