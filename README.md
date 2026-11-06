@@ -8,14 +8,44 @@ vetcode is an [Agent Skill](https://agentskills.io), an MCP server and a CLI, fo
 
 Free and open source (MIT), from the [OpenYard](https://openyard.cloud) community.
 
-[Tiếng Việt ở cuối trang ↓](#tiếng-việt)
+## How it compares
+
+Measured head to head: each tool scans exactly the same packages, drawn at random from public malware datasets, on samples that were never used to tune vetcode's rules. GuardDog is scored with each of its four verdicts (any issue, any threat rule, risk score ≥ 5, risk score ≥ 7) and credited with its best one.
+
+**Malicious packages, vetcode vs [GuardDog](https://github.com/DataDog/guarddog)**
+
+| | Samples | F1 | Precision | Recall | False alarms |
+|---|---|---|---|---|---|
+| **npm**, vetcode | 500 malicious + 500 clean | **94.4** | **97.6** | **91.4** | **2.2%** |
+| npm, GuardDog | same | 93.3 | 95.4 | 91.2 | 4.4% |
+| **PyPI**, vetcode | 300 malicious + 216 clean | **86.4** | **93.4** | **80.3** | **7.9%** |
+| PyPI, GuardDog | same | 78.3 | 78.5 | 78.0 | 29.6% |
+
+npm samples come from [NPMAnalysis](https://github.com/lxyeternal/NPMAnalysis), the dataset whose paper ranks GuardDog first among 13 detectors. PyPI malware comes from the [Datadog dataset](https://github.com/DataDog/malicious-software-packages-dataset); the clean side is popular packages from pypi.org. On npm the two are close: a one-point gap is within the variation between samples. On PyPI vetcode is clearly ahead, mostly because it raises a quarter as many false alarms.
+
+**Malicious agent skills, vetcode vs [Cisco skill-scanner](https://github.com/cisco-ai-defense/skill-scanner)**, both without an LLM, on 204 malicious skills (Datadog) and 132 clean ones (Anthropic, Trail of Bits, obra/superpowers):
+
+| At severity high | Caught | False alarms |
+|---|---|---|
+| **vetcode** | **29.9%** | **3.0%** |
+| Cisco skill-scanner | 23.5% | 15.9% |
+
+Rules alone catch a minority of malicious skills for every tool; most of them are ordinary-looking instructions that need reading. That reading is the agent's step in vetcode's `SKILL.md` and is not part of these numbers.
+
+**Also measured**
+
+- **Speed:** on the same 30 PyPI packages (659 MB), GuardDog took 1,104 s and vetcode 299 s; vetcode has since become another third faster.
+- **Techniques the datasets barely contain:** 12 of 12 caught from 2025–2026 campaigns, each next to a clean look-alike that is not flagged (`bench/redteam.mjs`): code pushed off-screen in `dist/`, GlassWorm Unicode payloads, payloads in images, protestware, time bombs, sandbox evasion, homoglyphs, disguised executables, recon beacons, ClawHavoc-style skills.
+- **Breadth:** one run covers malware, supply chain, secrets, web and API code, server and cloud configuration, CI/CD and AI agent setups. GuardDog covers malicious packages; Cisco skill-scanner covers skills.
+
+**Caveats.** Samples are 336 to 1,000 items, so numbers move by one or two points between samples. Most malicious packages in these datasets were found by GuardDog itself, which favours it. The numbers are the scanner alone; in normal use the agent re-reads every finding, which removes more false alarms. Everything is reproducible with the scripts in [`bench/`](bench/README.md).
 
 ## What it checks
 
 | Area | Examples |
 |---|---|
-| **Malware** | decode-then-`eval`, download-and-run, reverse shells, credential and wallet theft (`~/.ssh`, `~/.aws`, browser profiles), env-var exfiltration to webhooks, `_0x` obfuscation, hidden Unicode payloads (GlassWorm), Trojan Source bidi characters, AI CLIs started with permission prompts off, self-spreading `npm publish` worms, `.pth` autoruns, miners |
-| **Supply chain** | install-time code that combines network access with secrets, programs or hidden code; suspicious `preinstall`/`postinstall`, typosquats (`expresss`, `@angullar/core`, `reqeusts`), git/URL dependencies, lockfile packages from foreign hosts, `--extra-index-url` dependency confusion, `setup.py` that runs code, VS Code tasks that run on folder open, git hooks, known vulnerable and **known malicious** packages via [OSV.dev](https://osv.dev) |
+| **Malware** | decode-then-`eval`, download-and-run, reverse shells, credential and wallet theft (`~/.ssh`, `~/.aws`, browser profiles), env-var exfiltration to webhooks, `_0x` obfuscation, hidden Unicode payloads (GlassWorm), Trojan Source bidi characters, AI CLIs started with permission prompts off, self-spreading `npm publish` worms, `.pth` autoruns, miners, beacons that report host, user and IP, `.exe` droppers |
+| **Supply chain** | install-time code that combines network access with secrets, programs or hidden code; dependency-confusion probes (install scripts that call home, version 99.x, self-deleting or detached scripts); suspicious `preinstall`/`postinstall`, typosquats (`expresss`, `@angullar/core`, `reqeusts`), git/URL dependencies, lockfile packages from foreign hosts, `--extra-index-url` dependency confusion, `setup.py` that runs code, VS Code tasks that run on folder open, git hooks, known vulnerable and **known malicious** packages via [OSV.dev](https://osv.dev) |
 | **AI agents** | project `.claude/settings.json` with hooks, API base-URL redirects or auto-approved MCP servers; prompt injection and hidden comments in `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, skills; poisoned MCP tool descriptions; unpinned or plain-HTTP MCP servers |
 | **Secrets** | 40+ providers (cloud, AI, payment, SaaS, registries), private keys, database URLs, Supabase `service_role` keys (and not the public anon key), committed `.env`, secrets in git history, secrets behind `NEXT_PUBLIC_`/`VITE_` prefixes |
 | **Web / API** | SQL/NoSQL/command injection, XSS, SSTI, path traversal, SSRF, open redirects, unsafe deserialisation, weak JWT handling, TLS checks off, permissive CORS, mass assignment, weak password hashing, insecure randomness, zip slip, XXE, prototype pollution, model output passed to `eval` |
@@ -170,17 +200,3 @@ vetcode borrows ideas (not code) from projects that do parts of this very well, 
 
 New rules, fewer false positives and real-world samples are all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Found a way to make vetcode miss malware? Please report it privately: [SECURITY.md](SECURITY.md).
 
----
-
-## Tiếng Việt
-
-**vetcode** là công cụ kiểm tra bảo mật cho các AI agent lập trình (Claude, Codex, Gemini, Copilot, Cursor…). Dùng nó để soát app, web, server của bạn trước khi deploy, hoặc soát repo, package, extension, MCP server của người khác trước khi cài.
-
-- **Cách hoạt động:** bộ quét (không cần cài gì thêm) tìm các điểm đáng ngờ trong vài giây. Sau đó Claude đọc code quanh từng điểm, lần theo dữ liệu, loại báo động giả, và tìm thêm lỗi mà regex không thấy được như thiếu phân quyền, IDOR hay sai logic nghiệp vụ.
-- **Kiểm tra:** mã độc, tấn công chuỗi cung ứng (package giả tên, script cài đặt độc), lỗ hổng nhắm vào AI agent (hooks, chỉ dẫn ẩn trong `CLAUDE.md`, MCP độc), lộ key và secret, lỗ hổng web/API, cấu hình server và cloud (Docker, nginx, Supabase RLS, Firebase, Cloudflare), CI/CD.
-- **Dùng được với nhiều agent:** Claude, Codex, Gemini CLI, GitHub Copilot, Cursor, Windsurf…, dưới dạng skill (`npx skills add openyard-cloud/vetcode`), MCP server, hoặc dòng lệnh. Xem phần Install ở trên.
-- **Cài cho Claude Code:** chạy lần lượt `/plugin marketplace add openyard-cloud/vetcode` rồi `/plugin install vetcode@openyard`. Thiếu lệnh đầu sẽ báo `Marketplace "openyard" not found`.
-- **Dùng:** hỏi bằng tiếng Việt, ví dụ "kiểm tra bảo mật repo này", "quét mã độc trước khi cài", "soát lỗ hổng trước khi deploy". Báo cáo sẽ trả lời bằng tiếng Việt.
-- **Riêng tư:** mọi thứ chạy trên máy bạn. Chỉ khi bật `--online` thì tên và phiên bản package mới được gửi tới OSV.dev. Secret luôn được che trong báo cáo.
-
-Miễn phí, mã nguồn mở (MIT), thuộc cộng đồng [OpenYard](https://openyard.cloud).
