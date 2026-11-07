@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { diffRange } from "../skills/vetcode/scripts/lib/index.mjs";
+import { staleThreads } from "./threads.mjs";
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -80,6 +81,22 @@ async function gh(method, url, body) {
   return r.status === 204 ? null : r.json();
 }
 
+async function graphql(query, variables) {
+  const r = await fetch(process.env.GITHUB_GRAPHQL_URL || "https://api.github.com/graphql", {
+    method: "POST", headers: { authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "content-type": "application/json" }, body: JSON.stringify({ query, variables }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.errors) throw new Error(`graphql: ${r.status} ${JSON.stringify(j.errors || "").slice(0, 200)}`);
+  return j.data;
+}
+
+async function resolveStale(owner, name, number) {
+  const data = await graphql(`query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{body}}}}}}}`, { o: owner, n: name, p: number });
+  const ids = staleThreads(data.repository.pullRequest.reviewThreads.nodes, new Set(findings.map(f => f.fingerprint)));
+  for (const id of ids) await graphql(`mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`, { id });
+  return ids.length;
+}
+
 const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
 const pr = event.pull_request?.number, repo = process.env.GITHUB_REPOSITORY;
 if (COMMENT && pr && repo && process.env.GITHUB_TOKEN) {
@@ -101,6 +118,9 @@ if (COMMENT && pr && repo && process.env.GITHUB_TOKEN) {
       });
       console.error(`vetcode: review posted (${freshInline.length} inline comments, ${fresh.length} new findings)`);
     } else console.error("vetcode: nothing new since the last review");
+    const [owner, name] = repo.split("/");
+    const closed = await resolveStale(owner, name, pr).catch(e => (console.error(`vetcode: could not resolve old threads (${e.message})`), 0));
+    if (closed) console.error(`vetcode: resolved ${closed} thread${closed > 1 ? "s" : ""} whose finding is gone`);
   } catch (e) {
     // Pull requests from forks get a read-only token; the job summary still has everything.
     console.error(`vetcode: could not post the review (${e.message}); see the job summary`);

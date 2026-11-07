@@ -196,7 +196,6 @@ on: pull_request
 permissions:
   contents: read
   pull-requests: write    # inline review comments
-  security-events: write  # optional: SARIF in the Security tab
 jobs:
   review:
     runs-on: ubuntu-latest
@@ -206,12 +205,11 @@ jobs:
       - uses: openyard-cloud/vetcode@main   # pin a release tag or commit SHA
         with:
           fail-on: high        # critical, high, medium, low, or empty to never fail
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with: { sarif_file: vetcode.sarif }
 ```
 
-Comments are not repeated on later pushes. Pull requests from forks get a read-only token, so for them the results go to the job summary; their `vetcode-ignore` comments are also ignored, so a contributor cannot hide what they add. Inputs: `path`, `fail-on`, `comment`, `sarif`, `online`, `github-token`.
+Comments are not repeated on later pushes, and once a finding is gone (fixed or removed) its thread is resolved automatically. Pull requests from forks get a read-only token, so for them the results go to the job summary; their `vetcode-ignore` comments are also ignored, so a contributor cannot hide what they add. Inputs: `path`, `fail-on`, `comment`, `sarif`, `online`, `github-token`.
+
+The review comments already annotate the pull request, so do not also upload the SARIF file from the same pull request run: GitHub code scanning would show every finding a second time. For the Security tab, upload it from pushes to your default branch instead (see Other CI below). These comments come from the scanner alone, with no AI: patterns, so a benchmark file that builds malware-shaped strings on purpose gets flagged like real malware. The agent step below reads each finding in context and drops the ones it cannot justify.
 
 **With an AI agent.** The action is the scanner on its own. To have an agent confirm each finding and look for what patterns cannot see (authorization, business logic), run your agent in the same workflow and point it at the skill, for example with [Claude Code Action](https://github.com/anthropics/claude-code-action):
 
@@ -234,6 +232,8 @@ Any CI that has Node.js 18+ can run the scanner and fail the build:
 git clone --depth 1 https://github.com/openyard-cloud/vetcode .vetcode
 node .vetcode/skills/vetcode/scripts/vet.mjs . --sarif vetcode.sarif --fail-on high
 ```
+
+On GitHub, a push to the default branch can feed the Security tab with the same SARIF file: run the line above, then `github/codeql-action/upload-sarif@v3` with `sarif_file: vetcode.sarif` (needs `security-events: write`).
 
 ### Suppressing a false positive
 

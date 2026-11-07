@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { vet } from "../skills/vetcode/scripts/lib/index.mjs";
 import { lookalike } from "../skills/vetcode/scripts/lib/supply.mjs";
 import { POPULAR_NPM, POPULAR_PYPI } from "../skills/vetcode/scripts/lib/popular.mjs";
+import { staleThreads } from "../action/threads.mjs";
 
 const j = (...p) => p.join("");
 const fake = (prefix, n, ch = "a1B2c3D4e5") => prefix + ch.repeat(Math.ceil(n / ch.length)).slice(0, n);
@@ -345,6 +346,12 @@ test("GitHub review: changed lines block, findings already in the file are only 
   assert.match(md, /Not on a changed line[\s\S]*mal-eval-decoded/);
   const quiet = spawnSync(process.execPath, [path.resolve("action/review.mjs"), report, "--base", base, "--fail-on", "critical"], { cwd: dir, env, encoding: "utf8" });
   assert.equal(quiet.status, 0, "the only critical finding was already in the file");
+});
+
+test("GitHub review: only our own threads whose finding is gone are resolved", () => {
+  const t = (id, body, isResolved = false) => ({ id, isResolved, comments: { nodes: [{ body }] } });
+  const threads = [t("fixed", "x <!-- vetcode:aaa -->"), t("still", "y <!-- vetcode:bbb -->"), t("human", "please rename this"), t("done", "z <!-- vetcode:ccc -->", true)];
+  assert.deepEqual(staleThreads(threads, new Set(["bbb"])), ["fixed"]);
 });
 
 test("code hidden with split strings, escapes or a base64 payload is still found", async () => {
