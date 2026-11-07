@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { finding } from "./engine.mjs";
-import { expanded } from "./normalize.mjs";
+import { decoded, expanded } from "./normalize.mjs";
 
 const CAPS = {
   "reads environment or credential files": /process\.env\b|os\.environ|os\.getenv|\.ssh[\\/]|\.npmrc|\.aws[\\/]|\.git-credentials|homedir\(\)|expanduser\(["']~/,
@@ -54,8 +54,10 @@ function withLocalDeps(abs, depth = 2, seen = new Set(), launchesOnly = false) {
   let text; try { if (fs.statSync(abs).size > 10e6) return ""; text = fs.readFileSync(abs, "utf8"); } catch { return ""; }
   if (depth === 0) return text;
   const dir = path.dirname(abs), deps = [];
-  const specs = [...text.matchAll(LAUNCH)].map(m => m[1] || m[2] || m[3]);
-  if (!launchesOnly) specs.push(...[...text.matchAll(IMPORTS)].map(m => m[1]));
+  // File names can be hidden too: fork("sj.tini/stpircs".split("").reverse().join("")).
+  const view = decoded(text) ?? text;
+  const specs = [...view.matchAll(LAUNCH)].map(m => m[1] || m[2] || m[3]);
+  if (!launchesOnly) specs.push(...[...view.matchAll(IMPORTS)].map(m => m[1]));
   for (const spec of specs) {
     // fork("scripts/x.js") resolves from the working directory, which at install is the package.
     for (const base of [dir, root]) for (const cand of [spec, spec + ".js", spec + ".cjs", spec + ".mjs", path.join(spec, "index.js")]) {

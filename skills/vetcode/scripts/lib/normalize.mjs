@@ -20,9 +20,39 @@ function unescapeLiteral(s) {
   });
 }
 
+// Strings built at run time from character codes or written backwards:
+//   String.fromCharCode(99, 104, 105)          "".join(map(chr, [99, 104, 105]))
+//   bytes([99, 104, 105]).decode()              chr(99) + chr(104) + chr(105)
+//   "ssecorp".split("").reverse().join("")      "ssecorp"[::-1]
+const NUM = String.raw`(?:0x[0-9a-fA-F]{1,4}|\d{1,5})`, NUMS = String.raw`${NUM}(?:\s*,\s*${NUM})*`;
+const BUILT = new RegExp([
+  String.raw`String\.fromCharCode\(\s*(${NUMS})\s*,?\s*\)`,
+  String.raw`(["'])\2\.join\(\s*map\(\s*chr\s*,\s*[\[(]\s*(${NUMS})\s*,?\s*[\])]\s*\)\s*\)`,
+  String.raw`(["'])\4\.join\(\s*\[?\s*chr\(\s*(\w+)\s*\)\s*for\s+\5\s+in\s+[\[(]\s*(${NUMS})\s*,?\s*[\])]\s*\]?\s*\)`,
+  String.raw`\bbytes(?:array)?\(\s*\[\s*(${NUMS})\s*,?\s*\]\s*\)\.decode\(\s*(?:["'][\w-]*["']\s*)?\)`,
+  String.raw`\bchr\(\s*${NUM}\s*\)(?:\s*\+\s*chr\(\s*${NUM}\s*\))+`,
+].join("|"), "g");
+const BACKWARDS = new RegExp(String.raw`${LIT}(?:\.split\(\s*(["'])\3\s*\)\.reverse\(\)\.join\(\s*(["'])\4\s*\)|\[\s*::\s*-1\s*\])`, "g");
+const HINT = /fromCharCode|\bchr\b|\bbytes(?:array)?\(\s*\[|\.reverse\(\)|\[\s*::\s*-1\s*\]/;
+
+function fromCodes(list) {
+  const codes = list.match(/0x[0-9a-fA-F]+|\d+/g).map(n => Number(n));
+  // Printable ASCII only, as for escapes; anything else is data (a glyph table, a checksum).
+  if (!codes.every(n => n >= 0x20 && n <= 0x7e)) return null;
+  const s = String.fromCharCode(...codes);
+  return s.includes('"') ? (s.includes("'") ? null : `'${s}'`) : `"${s}"`;
+}
+function rebuilt(text) {
+  if (!HINT.test(text)) return text;
+  let out = text.replace(BUILT, (m, js, q1, py1, q2, v, py2, by) => fromCodes(js || py1 || py2 || by || m.replace(/chr\(|\)|\+/g, ",").replace(/^[\s,]+|[\s,]+$/g, "")) ?? m);
+  out = out.replace(BACKWARDS, (m, q, body) => /\\/.test(body) ? m : q + [...body].reverse().join("") + q);
+  return out;
+}
+
 export function decoded(text) {
-  if (!text.includes("+") && !ESC.test(text)) return null;
-  let out = text;
+  const built = rebuilt(text);
+  if (!built.includes("+") && !ESC.test(built)) return built === text ? null : built;
+  let out = built;
   // "a" + "b" + "c" -> "abc" on the same line (twice covers the pieces each pass leaves).
   for (let pass = 0; pass < 4; pass++) {
     const next = out.replace(JOIN, (m, q1, a, q2, b) => q1 === q2 || (!a.includes(q1) && !b.includes(q1)) ? `${q1}${a}${b}${q1}` : m);

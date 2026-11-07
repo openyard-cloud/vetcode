@@ -14,6 +14,8 @@
 //   hex       string literals written as \xNN escapes          ("\x63\x68\x69...")
 //   pack      the whole file base64-encoded and run by eval/exec
 //   zpack     the same, compressed first (gzip / zlib)
+//   charcode  string literals built from character codes       (String.fromCharCode(99, …), "".join(map(chr, […])))
+//   reverse   string literals written backwards                 ("ssecorp_dlihc".split("").reverse().join(""), "…"[::-1])
 //   offscreen JavaScript lines pushed 400 spaces to the right  (rand-user-agent style)
 //   dist      code moved under dist/, where bundles live
 import fs from "node:fs";
@@ -39,6 +41,15 @@ const MUTATIONS = {
   none: null,
   split: (text) => eachLiteral(text, (q, s) => { const h = s.length >> 1; return `(${q}${s.slice(0, h)}${q} + ${q}${s.slice(h)}${q})`; }),
   hex: (text) => eachLiteral(text, (q, s, m) => /^[\x20-\x7e]+$/.test(s) ? q + [...s].map(c => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("") + q : m),
+  charcode: (text, rel) => eachLiteral(text, (q, s, m) => {
+    if (!/^[\x20-\x7e]+$/.test(s)) return m;
+    const codes = [...s].map(c => c.charCodeAt(0)).join(", ");
+    return JS.test(rel) ? `String.fromCharCode(${codes})` : `"".join(map(chr, [${codes}]))`;
+  }),
+  reverse: (text, rel) => eachLiteral(text, (q, s) => {
+    const r = q + [...s].reverse().join("") + q;
+    return JS.test(rel) ? `${r}.split("").reverse().join("")` : `${r}[::-1]`;
+  }),
   pack: (text, rel) => {
     const b64 = Buffer.from(text).toString("base64");
     if (JS.test(rel)) return `eval(Buffer.from("${b64}", "base64").toString());\n`;
