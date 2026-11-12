@@ -1,7 +1,7 @@
 {
   "name": "vetcode",
-  "version": "0.8.2",
-  "description": "Security check for coding agents: a guard that checks packages before they install and repositories after a clone, plus a review skill for malware, supply-chain attacks, leaked secrets, web/API vulnerabilities and server misconfiguration.",
+  "version": "0.8.4",
+  "description": "Security review skill for coding agents: a procedure and checklists for finding malware, supply-chain attacks, leaked secrets, web/API vulnerabilities and server misconfiguration by reading code. Skill only: the scanner and the install guard are in the full plugin on GitHub.",
   "author": {
     "name": "OpenYard",
     "url": "https://openyard.cloud"
