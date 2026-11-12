@@ -1,0 +1,21 @@
+{
+  "name": "vetcode",
+  "version": "0.8.0",
+  "description": "Security check for coding agents: a guard that checks packages before they install and repositories after a clone, plus a review skill for malware, supply-chain attacks, leaked secrets, web/API vulnerabilities and server misconfiguration.",
+  "author": {
+    "name": "OpenYard",
+    "url": "https://openyard.cloud"
+  },
+  "homepage": "https://github.com/openyard-cloud/vetcode",
+  "repository": "https://github.com/openyard-cloud/vetcode",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "malware",
+    "supply-chain",
+    "secrets",
+    "owasp",
+    "sast",
+    "skill"
+  ]
+}
