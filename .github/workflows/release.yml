@@ -76,7 +76,7 @@ jobs:
             gh release create "v$V" vetcode-skill.zip --target "$GITHUB_SHA" --title "vetcode $V" --generate-notes
           fi
       # The Claude plugin directory follows the `plugin` branch: only what the plugin installs
-      # (manifest, skill, hooks and its own README), one commit per version.
+      # (manifest, skill, hooks and its own README), one commit whenever that changes.
       - name: Plugin branch
         if: steps.v.outputs.new == 'true'
         env:

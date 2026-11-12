@@ -1375,3 +1375,12 @@ test("the plugin folder holds the plugin and nothing else", () => {
   assert.equal(run.status, 0, run.stderr);
 });
 
+test("the lists of popular names hold nothing a secret scanner reads as a credential", () => {
+  // One name per line: a line ending in "bearer" followed by a long name reads as "Bearer <token>".
+  // A plugin directory refused the plugin over exactly that (a spam package name after passport-http-bearer).
+  for (const f of ["popular-npm.txt", "popular-pypi.txt"]) {
+    const text = fs.readFileSync(new URL("../skills/vetcode/scripts/lib/data/" + f, import.meta.url), "utf8");
+    assert.equal(text.match(/bearer\s+[\w.~+\/=-]{16,}/i), null, f);
+  }
+});
+

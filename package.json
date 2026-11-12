@@ -1,6 +1,6 @@
 {
   "name": "@openyard/vetcode",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "The security check an AI coding agent runs before it acts: packages before they install, repositories after a clone, code before it ships. Malware, supply chain, secrets, web and config. Zero dependencies. CLI, MCP server, Agent Skill, Claude Code guard and GitHub Action.",
   "keywords": [
     "security",

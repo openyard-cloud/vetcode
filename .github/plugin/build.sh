@@ -5,7 +5,7 @@
 #
 #   sh .github/plugin/build.sh <folder>            build it
 #   sh .github/plugin/build.sh <folder> <remote>   build it, then commit it to the remote's
-#                                                  `plugin` branch, once per version
+#                                                  `plugin` branch when anything in it changed
 #
 # The Release workflow runs the second form. The Claude plugin directory follows that branch,
 # so what it scans and what people install is exactly this folder.
@@ -24,18 +24,15 @@ find "$out" -name .DS_Store -delete
 
 [ -n "$remote" ] || exit 0
 
-version() { node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version'; }
-v="$(version < "$out/.claude-plugin/plugin.json")"
+v="$(node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version' < "$out/.claude-plugin/plugin.json")"
 cd "$out"
 git init -q -b plugin
-if git fetch -q --depth 1 "$remote" plugin 2>/dev/null; then
-  if [ "$(git show FETCH_HEAD:.claude-plugin/plugin.json | version)" = "$v" ]; then
-    echo "The plugin branch already holds $v."
-    exit 0
-  fi
-  git reset -q --soft FETCH_HEAD
-fi
+if git fetch -q --depth 1 "$remote" plugin 2>/dev/null; then git reset -q --soft FETCH_HEAD; fi
 git add -A
+if git rev-parse -q --verify HEAD >/dev/null && git diff --cached --quiet HEAD; then
+  echo "The plugin branch already holds this ($v)."
+  exit 0
+fi
 git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "vetcode $v"
 git push -q "$remote" plugin
 echo "The plugin branch now holds $v."

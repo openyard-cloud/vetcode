@@ -10,7 +10,7 @@
       "name": "vetcode",
       "source": "./",
       "description": "Security check for coding agents: guards installs and clones, and reviews code for malware, supply chain, secrets, web and server vulnerabilities.",
-      "version": "0.8.0"
+      "version": "0.8.1"
     }
   ]
 }
