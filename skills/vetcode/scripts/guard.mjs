@@ -74,7 +74,10 @@ async function main() {
     if (res.notes.length) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: `vetcode checked this install. ${res.notes.join(" ")}` } }));
     return;
   }
-  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: res.decision, permissionDecisionReason: config ? res.message.replace(/^vetcode: /, `vetcode: ${config} would make the agent start a program that needs a look. `) : res.message } }));
+  // The guard never approves a call and never changes its input: it denies, or it hands the
+  // question to the person. "Allow" is silence, which leaves Claude Code's own permission flow as it is.
+  const decision = res.decision === "deny" ? "deny" : "ask";
+  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: decision, permissionDecisionReason: config ? res.message.replace(/^vetcode: /, `vetcode: ${config} would make the agent start a program that needs a look. `) : res.message } }));
 }
 
 // A guard that fails must not stop the work: any error means "no opinion".
