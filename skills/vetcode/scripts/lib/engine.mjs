@@ -70,7 +70,7 @@ export function scanLines(file, text, rules, out) {
   const longOk = applicable.some(r => r.longLines);
   for (let i = 0; i < lines.length; i++) {
     const full = lines[i], long = full.length > 5000;
-    // A payload makes its line enormous, and `exec(b64decode('…` sits at the start of it: in
+    // A payload makes its line enormous, and the call that unpacks and runs it sits at the start: in
     // scripts, malware rules read the head of a long line. JavaScript is left out, because there a
     // long line is almost always a bundle, where eval and base64 near each other mean nothing.
     if (long && !longOk && !HEAD_OK.test(file.rel)) continue;

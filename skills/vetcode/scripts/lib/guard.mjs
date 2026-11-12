@@ -16,7 +16,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { analyzeHistory } from "./npmhistory.mjs";
-import { lookalike, weeklyDownloads, WIDELY_USED } from "./supply.mjs";
+import { lookalike, WIDELY_USED } from "./supply.mjs";
+import { weeklyDownloads } from "./registry.mjs";
 import { verdict } from "./verdict.mjs";
 import { lockedPackages } from "./osv.mjs";
 import { POPULAR_SCOPES, KNOWN_NPM, KNOWN_PYPI, TARGET_NPM, TARGET_PYPI } from "./popular.mjs";
@@ -90,7 +91,7 @@ export function parseInstalls(line, { cwd = process.cwd(), exists = fs.existsSyn
   const args = (w, eco) => { const a = []; for (let i = 0; i < w.length; i++) { if (VALUE_FLAGS[eco].test(w[i])) { a.push({ flag: w[i], value: w[++i] }); continue; } if (w[i].startsWith("-")) { a.push({ flag: w[i].split("=")[0], value: w[i].includes("=") ? w[i].slice(w[i].indexOf("=") + 1) : null }); continue; } a.push({ word: w[i] }); } return a; };
   cmds.forEach((raw, i) => {
     const w = strip(raw), bin = base(w[0]);
-    // curl … | sh
+    // A download piped straight into a shell.
     if (raw.sep === "|" && /^(curl|wget)$/.test(bin) && /^(?:ba|z|da|k)?sh$/.test(base(strip(cmds[i + 1] || [])[0]))) {
       const url = w.find(x => /^https?:\/\//.test(x));
       if (!url || !INSTALLER.test(url)) out.push({ pipe: url || "a download", via: `${bin} | ${base(strip(cmds[i + 1])[0])}` });
@@ -323,7 +324,7 @@ export async function checkPackage(pkg, deps = {}) {
       version = pkg.want ? (vs.find(v => v.num === pkg.want || v.num.startsWith(pkg.want + "."))?.num ?? pkg.want) : crate.max_stable_version || crate.newest_version || vs[0]?.num;
       const v = vs.find(x => x.num === version);
       if (!v) { raise("deny", `${pkg.name}@${pkg.want} is not a published version.`); return done(); }
-      archive = v.dl_path ? `https://crates.io${v.dl_path}` : null; size = v.crate_size; published = Date.parse(v.created_at || "");
+      archive = v.dl_path ? `https://crates.io/${String(v.dl_path).replace(/^\/+/, "")}` : null; size = v.crate_size; published = Date.parse(v.created_at || "");
       times = Object.fromEntries(vs.filter(x => !x.yanked).map(x => [x.num, x.created_at]));
       if (v.yanked) raise("ask", `${pkg.name} ${version} was yanked by its maintainers.`);
       if ((crate.downloads || 0) > 2_000_000) known = true; // a crate used this widely has a reputation of its own
@@ -564,23 +565,5 @@ export async function scanArchive(eco, url, _size, { fetch: fetchFn = fetch, vet
   finally { spawnSync("chmod", ["-R", "u+rwX", dir]); fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
-/**
- * Which packages come from a private registry, from the project's and the user's npm and pip
- * settings. Only the registry lines are read; tokens in the same files are never touched.
- */
-export function privateRegistries({ cwd = process.cwd(), home = os.homedir(), env = process.env, read = f => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } } } = {}) {
-  const PUBLIC_NPM = /^https?:\/\/registry\.(?:npmjs\.org|yarnpkg\.com)\/?$/, PUBLIC_PY = /^https:\/\/(?:pypi\.org|files\.pythonhosted\.org)\//;
-  const scopes = new Set(); let allNpm = false, allPy = false;
-  for (const f of [path.join(cwd, ".npmrc"), path.join(home, ".npmrc")]) for (const line of read(f).split(/\r?\n/)) {
-    const m = /^\s*(?:(@[\w.-]+):)?registry\s*=\s*(\S+)/.exec(line);
-    if (!m || PUBLIC_NPM.test(m[2])) continue;
-    if (m[1]) scopes.add(m[1].toLowerCase()); else allNpm = true;
-  }
-  if (env.npm_config_registry && !PUBLIC_NPM.test(env.npm_config_registry)) allNpm = true;
-  for (const k of ["PIP_INDEX_URL", "UV_INDEX_URL", "UV_DEFAULT_INDEX", "PIP_EXTRA_INDEX_URL", "UV_EXTRA_INDEX_URL"]) if (env[k] && !PUBLIC_PY.test(env[k])) allPy = true;
-  for (const f of [path.join(cwd, "pip.conf"), path.join(home, ".pip", "pip.conf"), path.join(home, ".config", "pip", "pip.conf")]) if (/^\s*(?:extra-)?index-url\s*=\s*(?!https:\/\/pypi\.org\/)\S+/m.test(read(f))) allPy = true;
-  // GOPRIVATE / GONOPROXY: comma-separated path prefixes (globs) that never go to the public proxy.
-  const goPrivate = `${env.GOPRIVATE || ""},${env.GONOPROXY || ""}`.split(",").map(x => x.trim()).filter(Boolean).map(g => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*") + "(?:/|$)"));
-  return pkg => pkg.eco === "npm" ? allNpm || scopes.has((pkg.name.match(/^(@[^/]+)\//) || [])[1]) : pkg.eco === "go" ? goPrivate.some(r => r.test(pkg.name)) : pkg.eco === "cargo" ? false : allPy;
-}
+export { privateRegistries } from "./private.mjs";
 

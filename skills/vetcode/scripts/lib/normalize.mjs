@@ -63,8 +63,9 @@ export function decoded(text) {
   return out === text ? null : out;
 }
 
-// eval(Buffer.from("…", "base64").toString()), eval(atob("…")), exec(base64.b64decode("…")),
-// exec(__import__("base64").b64decode("…")), exec(codecs.decode("…", "base64")).
+// A packed payload in the scanned code: a call that runs text, wrapped around a call that
+// decodes base64 or hex (JavaScript: Buffer or atob; Python: the base64 and codecs modules).
+// The payload is decoded here to be read by the rules. It is never run.
 const PACKED = /\b(?:eval|exec|Function|execSync)\s*\(\s*(?:Buffer\.from\(\s*|atob\(\s*|(?:__import__\(\s*["']base64["']\s*\)|base64)\.b64decode\(\s*|codecs\.decode\(\s*|(?:zlib|lzma|bz2|gzip)\.(?:decompress|inflateSync|gunzipSync|brotliDecompressSync|unzipSync|inflateRawSync)\(\s*(?:base64\.b64decode\(\s*|Buffer\.from\(\s*))(["'])([A-Za-z0-9+/=\s\\]{40,}?)\1/g;
 
 export function payloads(text, depth = 0) {

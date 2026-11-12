@@ -8,6 +8,7 @@ import { finding, lineOf } from "./engine.mjs";
 import { POPULAR_SCOPES, KNOWN_SCOPES, KNOWN_NPM, KNOWN_PYPI, TARGET_NPM, TARGET_PYPI } from "./popular.mjs";
 import { installEntryFiles, checkInstallEntry, libraryEntryFiles, capabilitiesOf } from "./capabilities.mjs";
 import { expanded } from "./normalize.mjs";
+import { weeklyDownloads } from "./registry.mjs";
 
 const rule = r => ({ category: "supply-chain", confidence: "medium", ...r });
 const readJson = text => { try { return JSON.parse(text.replace(/^\uFEFF/, "")); } catch { return null; } };
@@ -53,16 +54,6 @@ export function lookalike(name, popular, scopes = POPULAR_SCOPES, known = popula
   return null;
 }
 
-/** How many times a package was installed last week, from the registry's public counters. null when unknown. */
-export async function weeklyDownloads(fetchFn, eco, name) {
-  try {
-    const url = eco === "npm" ? `https://api.npmjs.org/downloads/point/last-week/${String(name).replace("/", "%2F")}` : `https://pypistats.org/api/packages/${String(name).toLowerCase()}/recent`;
-    const r = await fetchFn(url, { headers: { "user-agent": "vetcode", accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return null;
-    const j = await r.json(), n = eco === "npm" ? j.downloads : j.data?.last_week;
-    return Number.isFinite(n) ? n : null;
-  } catch { return null; }
-}
 // A name installed tens of thousands of times a week is a package in its own right; one installed
 // a few hundred times next to a name installed millions of times is what a typosquat looks like.
 export const WIDELY_USED = 20000, BARELY_USED = 2000;
@@ -71,7 +62,7 @@ export const WIDELY_USED = 20000, BARELY_USED = 2000;
 export async function settleLookalikes(findings, log = () => {}, fetchFn = fetch) {
   const drop = new Set();
   for (const f of findings.filter(x => x.rule === "dep-typosquat").slice(0, 25)) {
-    const name = (/^"([^"]+)"/.exec(f.evidence) || [])[1];
+    const name = ((f.evidence || "").match(/^"([^"]+)"/) || [])[1];
     if (!name) continue;
     const n = await weeklyDownloads(fetchFn, /\.json$/.test(f.file) ? "npm" : "pypi", name);
     if (n === null) continue;
@@ -254,7 +245,7 @@ function checkSetupPy(file, text, out) {
   stealerKit(file, text, out);
   // The package being vetted: a name one letter from a popular one, or a version number chosen
   // to outrank a private package of the same name, with code that runs on install.
-  const name = /\bname\s*=\s*["']([A-Za-z0-9][\w.-]*)["']/.exec(text), version = /\bversion\s*=\s*["'](\d+)[\w.]*["']/.exec(text);
+  const name = text.match(/\bname\s*=\s*["']([A-Za-z0-9][\w.-]*)["']/), version = text.match(/\bversion\s*=\s*["'](\d+)[\w.]*["']/);
   const like = name && lookalike(name[1], TARGET_PYPI, POPULAR_SCOPES, KNOWN_PYPI);
   if (like) out.push(finding(rule({ id: "package-name-typosquat", severity: "high", title: "This package's name imitates a popular package",
     why: "Typosquats borrow a popular name with a small change so people install them by mistake.", fix: "Install the real package instead; treat this one as hostile." }), file.rel, lineOf(text, name.index), `"${name[1]}" looks like "${like}"`));
@@ -266,19 +257,19 @@ function checkSetupPy(file, text, out) {
     // Compiling extensions with subprocess is normal; an install-time command that talks to the
     // network, runs decoded code, posts to a webhook or starts an .exe is not.
     const onInstall = /class\s+\w+\s*\(\s*(?:\w+\.)?(?:install|develop|egg_info)\s*\)/.test(text);
-    const acts = onInstall && /\b(?:requests\.|urllib|urlopen|urlretrieve|socket\.|exec\s*\(|eval\s*\(|startfile|Webhook|webhook|curl|wget|\.exe\b|powershell|Fernet|b64decode|whoami|hostname|getpass\.getuser|os\.getlogin|platform\.node)/.exec(text);
+    const acts = onInstall && text.match(/\b(?:requests\.|urllib|urlopen|urlretrieve|socket\.|exec\s*\(|eval\s*\(|startfile|Webhook|webhook|curl|wget|\.exe\b|powershell|Fernet|b64decode|whoami|hostname|getpass\.getuser|os\.getlogin|platform\.node)/);
     out.push(finding(rule({ id: "setup-py-install-command", severity: acts ? "high" : "medium", confidence: acts ? "high" : "medium",
       title: acts ? "setup.py overrides the install command to run code" : "setup.py overrides the install command",
       why: "A custom install command runs during `pip install` with your rights; malicious packages use it to download, beacon or start a payload before any code is imported.",
       fix: "Read the overridden run() method; install from a wheel or with --no-build-isolation in a throwaway environment if you must." }), file.rel, lineOf(text, text.search(INSTALL_CMD)), acts ? `install command + ${acts[0]}` : text.match(INSTALL_CMD)[0]));
   }
-  const m = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.|subprocess\.|os\.system|os\.popen|exec\s*\(|eval\s*\(|socket\.|base64\.b64decode|__import__\()/.exec(text);
+  const m = text.match(/\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.|subprocess\.|os\.system|os\.popen|exec\s*\(|eval\s*\(|socket\.|base64\.b64decode|__import__\()/);
   // A module that happens to be called setup.py (an app's setup endpoint) is not run by pip.
   // pip runs the setup.py at the root of a distribution: the top of what is being read, a file that calls setup(), or one beside packaging metadata.
   const packaging = !file.rel.includes("/") || /\b(?:setuptools|distutils)\b|^\s*setup\s*\(/m.test(text) || (file.abs && ["PKG-INFO", "pyproject.toml", "setup.cfg", "MANIFEST.in"].some(f => fs.existsSync(path.join(path.dirname(file.abs), f))));
   if (!m || !packaging) return;
   // Building C extensions or reading git tags needs subprocess; fetching or decoding code does not.
-  // exec(open("pkg/version.py").read()) and compile(open(...)) read the version; that is fine.
+  // Running the text of a file the package opens itself (pkg/version.py, to read the version) is fine.
   const runsDecoded = /\b(?:exec|eval)\s*\((?!\s*(?:compile\s*\()?\s*open\s*\()(?![^)\n]*\.read\(\))[^\n]*/.test(text) && /b64decode|decompress|marshal|fromhex|unhexlify|__import__/.test(text);
   const strong = /\b(?:urllib\.request|urlopen|requests\.(?:get|post)|httpx\.(?:get|post)|socket\.socket|socket\.connect)\b|\b(?:curl|wget|powershell)\b/.test(text) || runsDecoded;
   out.push(finding(rule({ id: "setup-py-runs-code", severity: strong ? "high" : "low", title: strong ? "setup.py fetches, decodes or evaluates code" : "setup.py runs shell commands",
@@ -300,7 +291,7 @@ function repoOwner(abs) {
     const cfg = path.join(dir, ".git", "config");
     if (fs.existsSync(cfg)) {
       let text = ""; try { text = fs.readFileSync(cfg, "utf8"); } catch { /* unreadable: unknown */ }
-      const owner = ((/url\s*=\s*\S*github\.com[:/]([\w.-]+)\//i.exec(text) || [])[1] || "").toLowerCase();
+      const owner = ((text.match(/url\s*=\s*\S*github\.com[:/]([\w.-]+)\//i) || [])[1] || "").toLowerCase();
       owners.set(dir, owner);
       return owner;
     }
@@ -321,7 +312,7 @@ function checkWorkflow(file, text, out) {
   if (!/^permissions\s*:/m.test(text) && !/^\s{2,}permissions\s*:/m.test(text)) w({ r: rule({ id: "gha-default-permissions", severity: "low", confidence: "high", title: "Workflow does not limit its token",
     why: "Without a permissions block the token gets the repository default, which is often write access.", fix: "Add `permissions: { contents: read }` at the top and widen per job." }), line: 1, ev: "no permissions: block" });
   const pub = /\bon\s*:[\s\S]{0,200}?\b(pull_request|pull_request_target|issue_comment|workflow_run)\b/.test(text);
-  const selfHosted = /runs-on\s*:\s*\[?[^\n]*self-hosted/.exec(text);
+  const selfHosted = text.match(/runs-on\s*:\s*\[?[^\n]*self-hosted/);
   if (pub && selfHosted) w({ r: rule({ id: "gha-self-hosted-untrusted", severity: "high", confidence: "medium", title: "Self-hosted runner used for events outsiders can trigger",
     why: "On a public repository, a pull request or comment can run code on your own machine.", fix: "Use GitHub-hosted runners for untrusted events, or ephemeral isolated runners." }), line: lineOf(text, selfHosted.index), ev: selfHosted[0].trim() });
   for (const m of text.matchAll(/credentials\s*:\s*\n\s+username\s*:[^\n]*\n\s+password\s*:\s*(?!\$\{\{)(\S+)/g)) w({ r: rule({ id: "gha-hardcoded-registry-password", severity: "high", confidence: "high", title: "Container registry password written in the workflow",
@@ -335,7 +326,7 @@ function checkWorkflow(file, text, out) {
     const indent = line.search(/\S/);
     // A script is the text under `run: |`; a one-line `run: cmd` has none below it, and the keys
     // beside it (`env:`, `with:`) are where untrusted text is supposed to go.
-    const runKey = /^(\s*)(-\s+)?run\s*:\s*(.*)$/.exec(line);
+    const runKey = line.match(/^(\s*)(-\s+)?run\s*:\s*(.*)$/);
     if (runKey) { inRun = /^[|>][+-]?\d*\s*(?:#.*)?$/.test(runKey[3].trim()); runIndent = runKey[1].length + (runKey[2]?.length || 0); }
     else if (inRun && indent >= 0 && indent <= runIndent && line.trim()) inRun = false;
     // The base of a pull request (its ref, sha, label) is a branch of this repository, not the author's text.
@@ -363,7 +354,7 @@ function checkWorkflow(file, text, out) {
       // The job's own `uses:`: the nearest one at the same depth, without leaving the job.
       let uses = null;
       for (const step of [-1, 1]) for (let k = i + step; !uses && k >= 0 && k < lines.length && (depth(lines[k]) < 0 || depth(lines[k]) >= mine); k += step) if (depth(lines[k]) === mine && /^\s*uses\s*:/.test(lines[k])) uses = lines[k];
-      const own = (/^\s*uses\s*:\s*["']?([\w.-]+)\//.exec(uses || "") || [])[1];
+      const own = ((uses || "").match(/^\s*uses\s*:\s*["']?([\w.-]+)\//) || [])[1];
       const local = /\bsecrets\s*:\s*inherit\b/.test(line) && (/^\s*uses\s*:\s*["']?\.\//.test(uses || "") || (!!own && own.toLowerCase() === repoOwner(file.abs)));
       out.push(finding(rule({ id: "gha-secrets-overexposed", severity: local ? "low" : "medium", confidence: "high", title: local ? "Workflow passes all its secrets to another workflow in this repository" : "Workflow hands out all secrets or re-enables unsafe commands",
         why: "Every secret becomes available to the called workflow or step, or old `set-env` commands can be injected through logs.", fix: "Pass only the secrets a job needs; remove ACTIONS_ALLOW_UNSECURE_COMMANDS." }), file.rel, i + 1, line.trim()));
@@ -392,13 +383,13 @@ function checkWorkflow(file, text, out) {
         why: "Tags can be moved: a compromised action repository can change what runs in your CI (as in the tj-actions incident).", fix: `Pin to the full commit SHA: uses: ${uses[1]}@<sha> # ${uses[2]}` }), file.rel, i + 1, line.trim()));
     }
   });
-  const trig = /^\s*(pull_request_target|workflow_run)\s*:|^on\s*:\s*\[?[^\n]*(pull_request_target|workflow_run)/m.exec(text);
+  const trig = text.match(/^\s*(pull_request_target|workflow_run)\s*:|^on\s*:\s*\[?[^\n]*(pull_request_target|workflow_run)/m);
   if (trig && !out.some(f => f.rule === "gha-pwn-request" && f.file === file.rel)) w({ r: rule({ id: "gha-dangerous-trigger", severity: "low", confidence: "medium", title: `Workflow uses ${trig[1] || trig[2]}`,
     why: "This trigger runs with secrets and a write token even for outside contributors; it is safe only if no step touches their code or text.", fix: "Prefer pull_request; if you need this trigger, never check out or interpolate PR content." }), line: lineOf(text, trig.index), ev: trig[0].trim() });
 }
 
 function checkVscode(file, text, out) {
-  const m = /"runOn"\s*:\s*"folderOpen"/.exec(text);
+  const m = text.match(/"runOn"\s*:\s*"folderOpen"/);
   if (m) out.push(finding(rule({ id: "vscode-autorun-task", severity: "high", confidence: "high", title: "VS Code task runs automatically when the folder opens",
     why: "Malicious repositories (fake job interviews, 'test projects') use this to run code the moment you open them.",
     fix: "Read the task's command before trusting the workspace; remove runOn if it is not yours." }), file.rel, lineOf(text, m.index), text.split("\n")[lineOf(text, m.index) - 1]));

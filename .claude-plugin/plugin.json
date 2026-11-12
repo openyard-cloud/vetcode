@@ -1,6 +1,6 @@
 {
   "name": "vetcode",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Security check for coding agents: a guard that checks packages before they install and repositories after a clone, plus a review skill for malware, supply-chain attacks, leaked secrets, web/API vulnerabilities and server misconfiguration.",
   "author": {
     "name": "OpenYard",
