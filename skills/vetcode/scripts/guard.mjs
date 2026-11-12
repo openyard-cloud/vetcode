@@ -69,12 +69,17 @@ async function main() {
     process.exitCode = res.decision === "deny" ? 2 : res.decision === "ask" ? 1 : 0;
     return;
   }
-  if (res.decision === "allow") {
-    // Say nothing unless there is something worth knowing; the agent sees it with the result.
+  // The guard never approves a call and never changes its input. It denies, or it hands the
+  // question to the person; otherwise it stays silent and Claude Code's own permission flow
+  // decides as it would without the guard.
+  if (res.decision !== "deny" && res.decision !== "ask") {
+    // Nothing to stop: say something only if it is worth knowing; the agent sees it with the result.
     if (res.notes.length) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: `vetcode checked this install. ${res.notes.join(" ")}` } }));
     return;
   }
-  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: res.decision, permissionDecisionReason: config ? res.message.replace(/^vetcode: /, `vetcode: ${config} would make the agent start a program that needs a look. `) : res.message } }));
+  const reason = config ? res.message.replace(/^vetcode: /, `vetcode: ${config} would make the agent start a program that needs a look. `) : res.message;
+  if (res.decision === "deny") console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }));
+  else console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: reason } }));
 }
 
 // A guard that fails must not stop the work: any error means "no opinion".

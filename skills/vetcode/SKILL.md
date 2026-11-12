@@ -3,7 +3,7 @@ name: vetcode
 license: MIT
 compatibility: Works with any agent that loads Agent Skills and can run shell commands. The scanner needs Node.js 18+; without it, follow the checklists by hand.
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
   homepage: https://github.com/openyard-cloud/vetcode
 description: Security check for apps, websites and servers. Finds malware and supply-chain attacks (malicious packages, install scripts, typosquats, booby-trapped repos, risky MCP servers and extensions), leaked secrets, and vulnerabilities in web/API code and server configuration, then confirms each finding by reading the code. Use when the user asks to check code for security problems, malware, vulnerabilities or leaked keys; before installing, cloning, opening or running an unfamiliar repository, package, extension or MCP server; before deploying or publishing; or to review a diff or PR for security. Also triggers on the same requests in any language.
 ---
