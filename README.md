@@ -4,6 +4,8 @@
 
 <p align="center"><b>The security check your AI coding agent runs before it acts.</b><br>Before it installs a package, after it clones a repository, before your code ships.<br>Zero dependencies. Reads, never runs. Works without an agent too.</p>
 
+<p align="center"><a href="https://vetcode.openyard.cloud"><b>vetcode.openyard.cloud</b></a></p>
+
 <p align="center">
   <a href="https://github.com/openyard-cloud/vetcode/releases"><img alt="release" src="https://img.shields.io/github/v/release/openyard-cloud/vetcode?color=14665f"></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-14665f"></a>
