@@ -38,6 +38,8 @@ The GitHub Action runs in your own CI and writes its comments to your pull reque
 
 Nothing outside the files you ask for (`--json`, `--sarif`, `--mcp-lock`). No cache, no log, no history.
 
+One exception, from the guard: `~/.claude/vetcode/memory-ledger.json` (under `CLAUDE_CONFIG_DIR` when you set it). For each memory or instruction file an agent wrote (MEMORY.md and the files it indexes, CLAUDE.md, AGENTS.md, GEMINI.md, Cursor and Windsurf rules), and for the `hooks` section of `~/.claude/settings.json`, it holds a hash and a line count, never the contents. It is compared at the start of each session to say what changed without an agent write; `VETCODE_MEMORY=off` turns it off. With `VETCODE_MEMORY=ask` or `note` the guard also reads the session transcript Claude Code names in the hook (`transcript_path`) to see where a memory line came from. It reads it on your machine and sends nothing.
+
 ## Your agent is a separate matter
 
 When an agent reviews code with the skill, the agent reads that code, so it goes to the model provider the agent uses, under that provider's terms. vetcode has no part in that. For code that must not leave the machine, run the scanner alone.
