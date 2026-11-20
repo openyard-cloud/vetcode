@@ -5,17 +5,26 @@ on:
   push:
     branches: [probe-resolve-permission]
 jobs:
-  probe:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: pull-requests-write
-          - name: plus-contents-write
-    runs-on: ubuntu-latest
+  pull-requests-write:
     permissions:
+      contents: read
       pull-requests: write
-      contents: ${{ matrix.name == 'plus-contents-write' && 'write' || 'read' }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          T=PRRT_kwDOVjc7ks62C4T4
+          echo "resolve:"; gh api graphql -f query="mutation{resolveReviewThread(input:{threadId:\"$T\"}){thread{isResolved}}}"
+          echo "unresolve:"; gh api graphql -f query="mutation{unresolveReviewThread(input:{threadId:\"$T\"}){thread{isResolved}}}"
+          exit 0
+  plus-contents-write:
+    needs: pull-requests-write
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
