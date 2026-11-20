@@ -1895,9 +1895,12 @@ test("CSP: only unsafe script sources count; inline styles alone and nonces do n
     "inline.html": meta("default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"),
     "default.html": meta("default-src 'self' 'unsafe-inline'"),
     "eval.html": meta("script-src 'self' 'unsafe-eval'"),
+    // A test that names the directive in prose (openyard-cloud/aolangai#3), and a policy built in code.
+    "site-csp.test.ts": "test(`${page}: script-src lists exactly the hashes of its inline scripts, and never 'unsafe-inline' or 'unsafe-eval'`, () => {\n",
+    "headers.ts": "const csp = `default-src 'self'; script-src 'self' ${cdn} 'unsafe-eval'`;\n",
   });
   const r = await run(dir);
-  assert.deepEqual(r.findings.filter(f => f.rule === "csp-unsafe").map(f => f.file).sort(), ["default.html", "eval.html", "inline.html"]);
+  assert.deepEqual(r.findings.filter(f => f.rule === "csp-unsafe").map(f => f.file).sort(), ["default.html", "eval.html", "headers.ts", "inline.html"]);
 });
 
 test("\"*\" on a package of the same npm workspace is not an unpinned dependency", async () => {

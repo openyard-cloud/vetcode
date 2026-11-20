@@ -90,11 +90,25 @@ async function graphql(query, variables) {
   return j.data;
 }
 
-async function resolveStale(owner, name, number) {
-  const data = await graphql(`query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{body}}}}}}}`, { o: owner, n: name, p: number });
-  const ids = staleThreads(data.repository.pullRequest.reviewThreads.nodes, new Set(findings.map(f => f.fingerprint)));
-  for (const id of ids) await graphql(`mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`, { id });
-  return ids.length;
+// Resolving a thread takes `contents: write` on the workflow token (measured: `pull-requests: write`
+// alone gets FORBIDDEN). Without it, the action says in the thread that the finding is gone, once.
+async function resolveStale(owner, name, number, headSha) {
+  const data = await graphql(`query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved comments(first:50){nodes{body databaseId}}}}}}}`, { o: owner, n: name, p: number });
+  const threads = data.repository.pullRequest.reviewThreads.nodes;
+  const ids = staleThreads(threads, new Set(findings.map(f => f.fingerprint)));
+  let resolved = 0, replied = 0, canResolve = true;
+  for (const id of ids) {
+    if (canResolve) {
+      try { await graphql(`mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`, { id }); resolved++; continue; }
+      catch (e) { if (!/FORBIDDEN|not accessible/i.test(e.message)) throw e; canResolve = false; }
+    }
+    const t = threads.find(x => x.id === id), first = t.comments.nodes[0];
+    if (t.comments.nodes.some(c => /<!-- vetcode:gone -->/.test(c.body || "")) || !first?.databaseId) continue;
+    await gh("POST", `/repos/${owner}/${name}/pulls/${number}/comments/${first.databaseId}/replies`,
+      { body: `vetcode no longer reports this${headSha ? ` at ${headSha.slice(0, 7)}` : ""}: fixed, or the code is gone. It is left open because resolving a thread needs \`contents: write\` on the workflow token.\n\n<!-- vetcode:gone -->` });
+    replied++;
+  }
+  return { resolved, replied, canResolve };
 }
 
 const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : {};
@@ -119,8 +133,10 @@ if (COMMENT && pr && repo && process.env.GITHUB_TOKEN) {
       console.error(`vetcode: review posted (${freshInline.length} inline comments, ${fresh.length} new findings)`);
     } else console.error("vetcode: nothing new since the last review");
     const [owner, name] = repo.split("/");
-    const closed = await resolveStale(owner, name, pr).catch(e => (console.error(`vetcode: could not resolve old threads (${e.message})`), 0));
-    if (closed) console.error(`vetcode: resolved ${closed} thread${closed > 1 ? "s" : ""} whose finding is gone`);
+    const stale = await resolveStale(owner, name, pr, event.pull_request?.head?.sha).catch(e => (console.error(`vetcode: could not update old threads (${e.message})`), null));
+    const n = k => `${stale[k]} thread${stale[k] > 1 ? "s" : ""}`;
+    if (stale?.resolved) console.error(`vetcode: resolved ${n("resolved")} whose finding is gone`);
+    if (stale?.replied) console.error(`vetcode: said in ${n("replied")} that the finding is gone (resolving needs contents: write)`);
   } catch (e) {
     // Pull requests from forks get a read-only token; the job summary still has everything.
     console.error(`vetcode: could not post the review (${e.message}); see the job summary`);

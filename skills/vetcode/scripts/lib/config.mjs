@@ -63,11 +63,25 @@ export const CONFIG_RULES = [
  * The script part of a CSP on one line: script-src (or script-src-elem), else default-src. 'unsafe-inline' only in
  * style-src is a much smaller risk and is not what this rule is about; next to a nonce or hash, browsers ignore it.
  */
+const SOURCE = /^(?:'(?:self|none|strict-dynamic|report-sample|unsafe-[a-z-]+|wasm-unsafe-eval|(?:nonce|sha256|sha384|sha512)-[^']+)'|\*|[a-z][a-z0-9+.-]*:(?:\/\/\S*)?|(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::(?:\d+|\*))?(?:\/\S*)?|\$\{[^}]*\}|\$\w+|\{\{[^}]*\}\})$/i;
+const sources = value => {
+  const out = [];
+  // A value spliced into a template (`'unsafe-inline'${extra}`) is a separate source; YAML doubles single quotes.
+  for (const token of value.replace(/\$\{[^}]*\}/g, " ${} ").replace(/''/g, "'").trim().split(/\s+/).filter(Boolean)) {
+    const t = token.replace(/[,\\]+$/, "");
+    if (!SOURCE.test(t)) break;
+    out.push(t);
+  }
+  return out.join(" ");
+};
+
 export function cspScriptsUnsafe(line) {
   const dirs = new Map();
   for (const part of line.split(";")) {
     const m = /\b(default-src|script-src-elem|script-src)\b([^;"`]*)/i.exec(part);
-    if (m && !dirs.has(m[1].toLowerCase())) dirs.set(m[1].toLowerCase(), m[2]);
+    // The value is the run of source expressions after the name. Prose that names the directive
+    // ("script-src lists the hashes of its scripts, and never 'unsafe-eval'") has none.
+    if (m && !dirs.has(m[1].toLowerCase())) dirs.set(m[1].toLowerCase(), sources(m[2]));
   }
   const src = dirs.get("script-src") ?? dirs.get("script-src-elem") ?? dirs.get("default-src");
   if (src === undefined) return false;

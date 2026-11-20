@@ -19,7 +19,7 @@
 claude plugin marketplace add openyard-cloud/vetcode && claude plugin install vetcode@openyard
 
 npx skills add openyard-cloud/vetcode            # any other agent, as a skill
-npx github:openyard-cloud/vetcode#v0.8.14 .       # no agent: scan a project, a package or a cloned repo
+npx github:openyard-cloud/vetcode#v0.8.15 .       # no agent: scan a project, a package or a cloned repo
 ```
 
 An agent installs a package in a second and runs a cloned project without reading it. vetcode is the check in between. It is three things:
@@ -134,7 +134,7 @@ Four tools (`vetcode_scan`, `vetcode_guard`, `vetcode_guide`, `vetcode_reference
 ```json
 {
   "mcpServers": {
-    "vetcode": { "command": "npx", "args": ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.14", "vetcode-mcp"] }
+    "vetcode": { "command": "npx", "args": ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.15", "vetcode-mcp"] }
   }
 }
 ```
@@ -147,7 +147,7 @@ Four tools (`vetcode_scan`, `vetcode_guard`, `vetcode_guide`, `vetcode_reference
 VS Code (`.vscode/mcp.json`):
 
 ```json
-{ "servers": { "vetcode": { "type": "stdio", "command": "npx", "args": ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.14", "vetcode-mcp"] } } }
+{ "servers": { "vetcode": { "type": "stdio", "command": "npx", "args": ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.15", "vetcode-mcp"] } } }
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -155,7 +155,7 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.vetcode]
 command = "npx"
-args = ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.14", "vetcode-mcp"]
+args = ["-y", "-p", "github:openyard-cloud/vetcode#v0.8.15", "vetcode-mcp"]
 ```
 
 </details>
@@ -249,7 +249,7 @@ or run `/vetcode` in Claude Code (`/vetcode:vetcode` when installed as a plugin)
 ### The scanner on its own
 
 ```bash
-npx github:openyard-cloud/vetcode#v0.8.14 [path] [options]   # straight from a release
+npx github:openyard-cloud/vetcode#v0.8.15 [path] [options]   # straight from a release
 node skills/vetcode/scripts/vet.mjs [path] [options]         # from a clone
 ```
 
@@ -288,12 +288,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { persist-credentials: false }
-      - uses: openyard-cloud/vetcode@v0.8.14   # a release tag, or its commit SHA
+      - uses: openyard-cloud/vetcode@v0.8.15   # a release tag, or its commit SHA
         with:
           fail-on: high        # critical, high, medium, low, or empty to never fail
 ```
 
-Comments are not repeated on later pushes, and a thread is resolved once its finding is gone. Pull requests from forks get a read-only token, so their results go to the job summary, and their `vetcode-ignore` comments are not honoured. Inputs: `path`, `fail-on`, `comment`, `sarif`, `online`, `github-token`.
+Comments are not repeated on later pushes. Once a finding is gone, its thread gets a reply saying so; GitHub lets the workflow token resolve the thread only with `contents: write`, so add that permission if you want those threads closed as well. Pull requests from forks get a read-only token, so their results go to the job summary, and their `vetcode-ignore` comments are not honoured. Inputs: `path`, `fail-on`, `comment`, `sarif`, `online`, `github-token`.
 
 <details>
 <summary>With an AI agent, the Security tab, and other CI</summary>
