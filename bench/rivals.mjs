@@ -51,28 +51,41 @@ function skillScanner(dir) {
     return { rules: (j.findings || []).map(f => f.rule_id || f.category || "finding"), verdicts: { high: ["HIGH", "CRITICAL"].includes(sev), medium: ["MEDIUM", "HIGH", "CRITICAL"].includes(sev), any: (j.findings_count || 0) > 0 } };
   } catch { return { error: true, rules: [], verdicts: { high: false, medium: false, any: false } }; }
 }
+// NVIDIA SkillSpector, static only (--no-llm, the counterpart of vetcode's rules). Its JSON gives a
+// recommendation (SAFE, CAUTION, DO_NOT_INSTALL) and issues with severities. Verdicts: DO_NOT_INSTALL,
+// CAUTION or worse, any HIGH or CRITICAL issue, any issue; the best one is kept.
+function skillSpector(dir) {
+  const r = spawnSync(BIN, ["scan", dir, "--no-llm", "--format", "json"], { encoding: "utf8", timeout: 300_000, maxBuffer: 64 << 20, cwd: os.tmpdir() });
+  const start = (r.stdout || "").indexOf("{");
+  try {
+    const j = JSON.parse(r.stdout.slice(start)), rec = String(j.risk_assessment?.recommendation || "SAFE").toUpperCase(), issues = j.issues || [];
+    return { rules: issues.map(i => i.id || i.category || "issue"), verdicts: { block: rec === "DO_NOT_INSTALL", caution: rec !== "SAFE", high: issues.some(i => /^(HIGH|CRITICAL)$/i.test(i.severity)), any: issues.length > 0 } };
+  } catch { return { error: true, rules: [], verdicts: { block: false, caution: false, high: false, any: false } }; }
+}
+const SKILL_TOOLS = { "skill-scanner": [skillScanner, ["high", "medium", "any"]], skillspector: [skillSpector, ["block", "caution", "high", "any"]] };
+const [scanSkill, VERDICTS] = SKILL_TOOLS[TOOL] || [];
 const skillDirs = root => { const out = []; (function walk(d) { let es; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } if (es.some(e => e.isFile() && e.name === "SKILL.md")) { out.push(d); return; } for (const e of es) if (e.isDirectory()) walk(path.join(d, e.name)); })(root); return out; };
 
 const results = [];
-if (TOOL === "skill-scanner" && ONLY.includes("skills")) {
+if (scanSkill && ONLY.includes("skills")) {
   const rows = [];
   const mal = path.join(CACHE, "skills", "malicious");
   for (const f of (fs.existsSync(mal) ? fs.readdirSync(mal).sort() : []).filter((_, i) => i % SHARDS === SHARD)) {
     const dir = path.join(work, `skill-${rows.length}`);
     if (!unpack(path.join(mal, f), dir)) { remove(dir); continue; }
     const target = skillDirs(dir)[0] || dir;
-    rows.push({ id: f, label: "malicious", ...skillScanner(target) });
+    rows.push({ id: f, label: "malicious", ...scanSkill(target) });
     remove(dir);
   }
   const col = path.join(CACHE, "skills", "benign-collections");
   for (const f of fs.existsSync(col) ? fs.readdirSync(col).sort() : []) {
     const dir = path.join(work, `col-${f}`);
     if (!unpack(path.join(col, f), dir)) continue;
-    for (const [i, d] of skillDirs(dir).entries()) if (i % SHARDS === SHARD) rows.push({ id: `${f}:${path.basename(d)}`, label: "benign", ...skillScanner(d) });
+    for (const [i, d] of skillDirs(dir).entries()) if (i % SHARDS === SHARD) rows.push({ id: `${f}:${path.basename(d)}`, label: "benign", ...scanSkill(d) });
     remove(dir);
   }
   const metrics = {};
-  for (const v of ["high", "medium", "any"]) {
+  for (const v of VERDICTS) {
     const c = { tp: 0, fn: 0, fp: 0, tn: 0 };
     for (const r of rows) c[r.label === "malicious" ? (r.verdicts[v] ? "tp" : "fn") : (r.verdicts[v] ? "fp" : "tn")]++;
     const p = c.tp / (c.tp + c.fp || 1), rc = c.tp / (c.tp + c.fn || 1);
@@ -83,22 +96,22 @@ if (TOOL === "skill-scanner" && ONLY.includes("skills")) {
   results.push({ name: "skills", samples: { malicious: rows.filter(r => r.label === "malicious").length, benign: rows.filter(r => r.label === "benign").length }, metrics,
     rulesOnMalicious: [], rulesOnBenign: [], missed: rows.filter(r => r.label === "malicious" && !r.verdicts[best[0].replace("sev_", "")]).map(r => r.id),
     falseAlarms: rows.filter(r => r.label === "benign" && r.verdicts[best[0].replace("sev_", "")]).map(r => ({ id: r.id, rules: r.rules.slice(0, 5) })), errors: rows.filter(r => r.error).length });
-  console.error(`skill-scanner skills: ${rows.length} samples · best F1 ${(metrics.high.f1 * 100).toFixed(1)}% (${best[0]}) · ${Object.entries(metrics).filter(([k]) => k !== "high").map(([k, m]) => `${k} ${(m.f1 * 100).toFixed(1)} (recall ${(m.recall * 100).toFixed(1)}, fpr ${(m.fpr * 100).toFixed(1)})`).join(", ")} · errors ${results.at(-1).errors}`);
+  console.error(`${TOOL} skills: ${rows.length} samples · best F1 ${(metrics.high.f1 * 100).toFixed(1)}% (${best[0]}) · ${Object.entries(metrics).filter(([k]) => k !== "high").map(([k, m]) => `${k} ${(m.f1 * 100).toFixed(1)} (recall ${(m.recall * 100).toFixed(1)}, fpr ${(m.fpr * 100).toFixed(1)})`).join(", ")} · errors ${results.at(-1).errors}`);
 }
 // The held-out skills set: both sides come as collections, one sample per folder holding SKILL.md.
-if (TOOL === "skill-scanner" && ONLY.includes("skills-heldout")) {
+if (scanSkill && ONLY.includes("skills-heldout")) {
   const rows = [];
   for (const [kind, label] of [["malicious-collections", "malicious"], ["benign-collections", "benign"]]) {
     const col = path.join(CACHE, "skills-heldout", kind);
     for (const f of fs.existsSync(col) ? fs.readdirSync(col).sort() : []) {
       const dir = path.join(work, `held-${label}-${f}`);
       if (!unpack(path.join(col, f), dir)) continue;
-      for (const [i, d] of skillDirs(dir).entries()) if (i % SHARDS === SHARD) rows.push({ id: `${f}:${path.basename(d)}`, label, ...skillScanner(d) });
+      for (const [i, d] of skillDirs(dir).entries()) if (i % SHARDS === SHARD) rows.push({ id: `${f}:${path.basename(d)}`, label, ...scanSkill(d) });
       remove(dir);
     }
   }
   const metrics = {};
-  for (const v of ["high", "medium", "any"]) {
+  for (const v of VERDICTS) {
     const c = { tp: 0, fn: 0, fp: 0, tn: 0 };
     for (const r of rows) c[r.label === "malicious" ? (r.verdicts[v] ? "tp" : "fn") : (r.verdicts[v] ? "fp" : "tn")]++;
     const p = c.tp / (c.tp + c.fp || 1), rc = c.tp / (c.tp + c.fn || 1);
@@ -107,7 +120,7 @@ if (TOOL === "skill-scanner" && ONLY.includes("skills-heldout")) {
   const best = Object.entries(metrics).sort((a, b) => b[1].f1 - a[1].f1)[0];
   metrics.high = { ...best[1], verdict: best[0] };
   results.push({ name: "skills-heldout", samples: { malicious: rows.filter(r => r.label === "malicious").length, benign: rows.filter(r => r.label === "benign").length }, metrics, rulesOnMalicious: [], rulesOnBenign: [], missed: [], falseAlarms: [], errors: rows.filter(r => r.error).length });
-  console.error(`skill-scanner skills-heldout: ${rows.length} samples · ${Object.entries(metrics).filter(([k]) => k !== "high").map(([k, m]) => `${k} F1 ${(m.f1 * 100).toFixed(1)} (recall ${(m.recall * 100).toFixed(1)}, fpr ${(m.fpr * 100).toFixed(1)})`).join(", ")} · errors ${results.at(-1).errors}`);
+  console.error(`${TOOL} skills-heldout: ${rows.length} samples · ${Object.entries(metrics).filter(([k]) => k !== "high").map(([k, m]) => `${k} F1 ${(m.f1 * 100).toFixed(1)} (recall ${(m.recall * 100).toFixed(1)}, fpr ${(m.fpr * 100).toFixed(1)})`).join(", ")} · errors ${results.at(-1).errors}`);
 }
 for (const eco of ["npm", "pypi"].filter(e => ONLY.includes(e) && TOOL === "guarddog")) {
   const rows = [];

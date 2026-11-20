@@ -19,8 +19,11 @@ on:
         description: Run GuardDog on the npm and PyPI samples (true or false)
         default: "true"
       skills:
-        description: Run Cisco skill-scanner on the held-out skills set (true or false)
+        description: Run a skill scanner on the held-out skills set (true or false)
         default: "false"
+      skill_tool:
+        description: Which skill scanner (skill-scanner = Cisco, skillspector = NVIDIA, static only)
+        default: "skill-scanner"
 permissions:
   contents: read
 jobs:
@@ -86,9 +89,16 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Cisco skill-scanner
+        if: inputs.skill_tool != 'skillspector'
         run: |
           pip install --quiet cisco-ai-skill-scanner
           pip show cisco-ai-skill-scanner | sed -n '1,2p'
+      # SkillSpector is not on PyPI; installed from a reviewed commit (2026-11-19, version 2.12.0 in its pyproject).
+      - name: Install NVIDIA SkillSpector
+        if: inputs.skill_tool == 'skillspector'
+        run: |
+          pip install --quiet "skillspector @ git+https://github.com/NVIDIA/SkillSpector.git@48e0f942ea1f5fdb7aa096a6f65a0adeda2ecc4e"
+          pip show skillspector | sed -n '1,2p'
       - name: Download samples (files only, nothing is installed or run)
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -96,7 +106,8 @@ jobs:
       - name: Scan this shard
         env:
           SHARD: ${{ matrix.shard }}
-        run: node bench/rivals.mjs --tool skill-scanner --bin "$(which skill-scanner)" --cache "$RUNNER_TEMP/bench" --out rivals/skills-heldout --only skills-heldout --shard "$SHARD/6"
+          TOOL: ${{ inputs.skill_tool }}
+        run: node bench/rivals.mjs --tool "$TOOL" --bin "$(which "$([ "$TOOL" = skillspector ] && echo skillspector || echo skill-scanner)")" --cache "$RUNNER_TEMP/bench" --out rivals/skills-heldout --only skills-heldout --shard "$SHARD/6"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
