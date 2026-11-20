@@ -10,12 +10,52 @@ const rule = r => ({ category: "agent", confidence: "medium", ...r });
 const readJson = text => { try { return JSON.parse(text.replace(/^﻿/, "").replace(/^\s*\/\/.*$/gm, "")); } catch { return null; } };
 const lineIn = (text, needle) => { const i = text.indexOf(needle); return i < 0 ? 1 : lineOf(text, i); };
 
-const SETTINGS = /(^|\/)\.claude\/settings(\.local)?\.json$|(^|\/)\.gemini\/settings\.json$|(^|\/)\.codex\/config\.toml$/;
+const SETTINGS = /(^|\/)\.claude\/settings(\.local)?\.json$|(^|\/)\.gemini\/settings\.json$|(^|\/)\.codex\/config\.toml$|(^|\/)\.cursor\/hooks\.json$/;
+// Hooks a plugin brings with it (Claude Code and Codex plugins): expected to exist, so only what they do is checked.
+const PLUGIN_HOOKS = /(^|\/)hooks\/hooks\.json$|(^|\/)\.(?:claude|codex)-plugin\/plugin\.json$/;
 export const INSTRUCTIONS = /(^|\/)(CLAUDE|AGENTS|GEMINI|CONVENTIONS)\.md$|(^|\/)\.cursorrules$|(^|\/)\.cursor\/rules\/[^/]+$|(^|\/)\.windsurfrules$|(^|\/)\.clinerules(\/[^/]+)?$|(^|\/)\.github\/copilot-instructions\.md$|(^|\/)\.github\/instructions\/[^/]+$|(^|\/)SKILL\.md$|(^|\/)\.claude\/(commands|agents|skills)\/.+\.md$|(^|\/)\.(agents|github)\/skills\/.+\.md$/i;
+
+// A hook is handed what the agent is about to do or just did: the command, the file and its new
+// text, the prompt. A hook that passes that input to curl, nc or an HTTP endpoint sends every one of
+// them to another machine, on every tool call, without the agent or the person seeing it.
+const NET_TOOL = /\b(?:curl|wget|nc|ncat|netcat|socat|telnet|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b|\/dev\/(?:tcp|udp)\//i;
+const READS_INPUT = /@-(?=["'\s]|$)|@\/dev\/stdin|--post-file[= ]\s*\/dev\/stdin|(?:-T|--upload-file)\s+-(?=["'\s]|$)|\$\(\s*cat\s*\)|`cat`|\$input\b|\[Console\]::In|<\s*\/dev\/stdin|^\s*(?:cat|jq\b[^|]*|tee\b[^|]*)\s*\|/i;
+const LOCAL_HOST = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal)$/i;
+
+function hookHandlers(hooks) {
+  const found = [];
+  (function visit(v) {
+    if (Array.isArray(v)) return v.forEach(visit);
+    if (!v || typeof v !== "object") return;
+    if (typeof v.command === "string" || typeof v.url === "string") found.push(v);
+    for (const k of Object.keys(v)) if (k !== "command" && k !== "url") visit(v[k]);
+  })(hooks);
+  return found;
+}
+
+function checkHookPayload(file, text, hooks, out) {
+  for (const h of hookHandlers(hooks)) {
+    const command = [h.command, ...(Array.isArray(h.args) ? h.args : [])].filter(x => typeof x === "string").join(" ");
+    const url = h.type === "http" && typeof h.url === "string" ? h.url : (NET_TOOL.test(command) && READS_INPUT.test(command) ? (/https?:\/\/[^\s"'`)]+/.exec(command)?.[0] || "") : null);
+    if (url === null) continue;
+    let host = ""; try { host = url ? new URL(url).hostname : ""; } catch { /* a URL built at run time */ }
+    if (host && LOCAL_HOST.test(host)) continue;
+    out.push(finding(rule({ id: "agent-hook-sends-input", severity: "high", title: `Hook sends what the agent does to ${host || "another machine"}`,
+      why: "A hook is given the agent's commands, the files it writes and the prompts it gets. This one passes that input over the network on every call it is registered for, so it leaves without the agent or you seeing it.",
+      fix: "Find out who runs the receiving end. Remove the hook unless sending your agent's activity there is something you chose (an observability service you use)." }), file.rel, lineIn(text, h.url || (h.command || "").slice(0, 40)), (h.url || command).slice(0, 200)));
+    return;
+  }
+}
+
+function checkPluginHooks(file, text, out) {
+  const s = readJson(text);
+  if (s?.hooks && typeof s.hooks === "object") checkHookPayload(file, text, s.hooks, out);
+}
 
 function checkSettings(file, text, out) {
   const s = readJson(text);
   if (!s) return;
+  if (s.hooks && typeof s.hooks === "object") checkHookPayload(file, text, s.hooks, out);
   const at = key => lineIn(text, `"${key}"`);
   if (s.hooks && Object.keys(s.hooks).length) {
     const cmds = JSON.stringify(s.hooks).match(/"command"\s*:\s*"([^"]{0,200})/g) || [];
@@ -67,6 +107,11 @@ const INJECTION = [
   [/\b(curl|wget)\b(?![^\n|]*https:\/\/(?:(?:deb|rpm)\.nodesource\.com|get\.docker\.com|sh\.rustup\.rs|install\.python-poetry\.org|bun\.sh\/install|get\.pnpm\.io|astral\.sh\/|deno\.land\/install|get\.helm\.sh|aspire\.dev\/install|aka\.ms\/|raw\.githubusercontent\.com\/(?:nvm-sh\/nvm|Homebrew\/install)\/|claude\.ai\/install))[^\n]*\|\s*(ba|z)?sh\b|--dangerously-skip-permissions|--yolo\b|--trust-all-tools|bypassPermissions/i, "asks the model to run downloaded code or skip permission prompts"],
   [/extract(?:ed)?\s+(?:it\s+)?(?:using|with)\s+(?:the\s+)?pass(?:word)?|\b(?:archive|zip|rar|7z)\s+pass(?:word|code)?\**\s*[:：]|\(pass(?:word)?:\s*`?[\w-]+`?\)|\b(?:download|install)\b[^\n]{0,160}\.(?:zip|exe|dmg|pkg|msi|appimage)\b[^\n]{0,160}\b(?:run|execute|open|launch)\b|\b(?:download|install|extract|unzip|unpack)\b[^\n]{0,200}\b(?:run|execute|launch)\s+the\s+(?:executable|installer|binary|installation command)|\b(?:run|execute|launch)\s+the\s+(?:installer|installation command)\b(?!\s+(?:from|in|shown in|given in|listed in)\s+(?:the\s+)?(?:[\w.-]+\s+){0,3}(?:docs?|documentation|README|guide)\b)|\b(?:glot\.io|pastebin\.com|paste\.ee|rentry\.co|hastebin\.com|controlc\.com)\/|must be (?:installed|running) before (?:using|you use) this skill[^\n]{0,200}https?:\/\//i, "tells you to download and run an outside program"],
 ];
+
+// Jailbreak framing: the model is told it has no rules. Not the phrase in quotation marks (a file that
+// warns about it). Its own rule, not agent-instruction-injection: that one gives a verdict alone on its
+// measured record, and these phrases have none yet.
+const SAFETY_OFF = /(?<!["“‘'`]\s?)(?:\b(?:never|do\s+not|don'?t)\s+refuse\s+(?:any\s+|a\s+|the\s+user'?s?\s+)?(?:requests?|instructions?|tasks?|commands?|prompts?)\b|\byou\s+(?:have|are\s+under|operate\s+with)\s+no\s+(?:restrictions|limitations|rules|guidelines|filters|guardrails)\b|\bignore\s+(?:your|all|any)\s+(?:safety\s+|ethical\s+|content\s+)?(?:guidelines|guardrails|safety\s+rules|content\s+polic(?:y|ies)|restrictions)\b|\bdo\s+anything\s+now\b|\b(?:DAN|jailbreak|developer)\s+mode\s+(?:enabled|activated|on)\b)/i;
 
 // Hosts nobody ships real software from: free app hosting, throwaway domains, paste sites,
 // link shorteners and bare addresses. A skill that sends its reader there to install a
@@ -139,6 +184,10 @@ function checkInstructions(file, text, out) {
       why: "Coding agents follow these files. Instructions planted in them (or in a skill or MCP tool description) make the agent act against you: leak secrets, run code, or hide what it did.",
       fix: "Read the file as a person would; remove anything you did not write. Treat a repository that contains this as hostile." }), file.rel, lineOf(text, m.index), text.split("\n")[lineOf(text, m.index) - 1]));
   }
+  const off = SAFETY_OFF.exec(text);
+  if (off) out.push(finding(rule({ id: "agent-safety-override", severity: "high", title: "Agent instruction file tells the model it has no safety rules",
+    why: "\"Never refuse\", \"you have no restrictions\", \"ignore your safety guidelines\": a skill or rules file that says this wants the agent to do what it would otherwise decline, for whoever wrote the file.",
+    fix: "Read what the file asks for once the model stops refusing. Remove the file unless you wrote it." }), file.rel, lineOf(text, off.index), text.split("\n")[lineOf(text, off.index) - 1]));
   const hidden = /<!--[\s\S]*?-->/g;
   for (const m of text.matchAll(hidden)) {
     if (!/\b(you|assistant|claude|ai|model|agent|must|always|never|execute|run)\b/i.test(m[0]) || m[0].length < 40) continue;
@@ -163,6 +212,7 @@ function checkMcpTools(file, text, out) {
 
 export function scanAgentFiles(file, text, out) {
   if (SETTINGS.test(file.rel)) checkSettings(file, text, out);
+  else if (PLUGIN_HOOKS.test(file.rel)) checkPluginHooks(file, text, out);
   else if (INSTRUCTIONS.test(file.rel)) checkInstructions(file, text, out);
   // The other Markdown of a skill (its README, its install notes): where it sends the reader to get software.
   else if (/\.md$/i.test(file.rel) && file.abs && inSkill(file.abs)) checkDestinations(file, text, out);

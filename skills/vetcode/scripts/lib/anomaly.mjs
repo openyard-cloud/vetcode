@@ -140,6 +140,44 @@ export function scanBinaries(root, listed, out) {
   }
 }
 
+/** Compiled Python that runs although the source next to it says otherwise, or with no source at all.
+ *  Python imports a `__pycache__` file instead of its source only when the source matches it, unless
+ *  the file was compiled as "unchecked" (PEP 552), and imports a `x.pyc` that sits where `x.py` would be
+ *  when there is no `x.py`. Either way the code that runs is not the code a reviewer reads. */
+export function scanBytecode(root, listed, out) {
+  const pyc = [];
+  if (listed) for (const rel of listed) { if (/\.pyc$/i.test(rel)) pyc.push(rel); }
+  else (function walk(dir, depth) {
+    if (depth > 12) return;
+    let entries; try { entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (e.isDirectory()) { if (e.name === "__pycache__" || !SKIP_DIRS.has(e.name)) walk(rel, depth + 1); }
+      else if (e.isFile() && /\.pyc$/i.test(e.name)) pyc.push(rel);
+    }
+  })("", 0);
+  let reported = 0;
+  for (const rel of pyc.slice(0, 5000)) {
+    if (reported >= 5) break;
+    const cached = /(^|\/)__pycache__\//.test(rel);
+    let head; try { const fd = fs.openSync(path.join(root, rel), "r"); head = Buffer.alloc(8); fs.readSync(fd, head, 0, 8, 0); fs.closeSync(fd); } catch { continue; }
+    // Python 3.7+ header: magic (2 bytes, then \r\n), then flags: bit 0 hash-based, bit 1 check the source.
+    const modern = head[2] === 0x0d && head[3] === 0x0a && head.readUInt16LE(0) >= 3390;
+    const unchecked = modern && (head.readUInt32LE(4) & 3) === 1;
+    const source = cached ? rel.replace(/__pycache__\/([^/]+?)\.[^./]+(?:\.opt-\d)?\.pyc$/i, "$1.py") : rel.replace(/\.pyc$/i, ".py");
+    const hasSource = fs.existsSync(path.join(root, source));
+    let why;
+    if (cached && unchecked && hasSource) why = `compiled as "unchecked": Python runs it instead of ${source} even after that file changes`;
+    else if (!cached && !hasSource) why = "no source next to it: Python imports this compiled file as the module";
+    if (!why) continue;
+    reported++;
+    out.push(finding({ id: "py-bytecode-instead-of-source", category: "supply-chain", severity: "high", confidence: "medium",
+      title: "Compiled Python runs instead of readable source",
+      why: `Malicious packages ship .pyc files so that what runs is not what a reviewer or a scanner reads (${why}).`,
+      fix: "Do not import or run it. Delete the .pyc file and compare behaviour; if the project needs it, find out who compiled it and from which source." }, rel, 1, `${rel}: ${why}`));
+  }
+}
+
 // Per character (code point), counted by number rather than by one-letter strings.
 const entropy = s => {
   if (!s.length) return 0;

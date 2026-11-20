@@ -16,7 +16,7 @@ import { kindOfRule, KINDS } from "./sinks.mjs";
 import { lockedPackages, queryOsv } from "./osv.mjs";
 import { runTools } from "./tools.mjs";
 import { checkMcpLock } from "./mcplock.mjs";
-import { scanBinaries, surprises } from "./anomaly.mjs";
+import { scanBinaries, scanBytecode, surprises } from "./anomaly.mjs";
 import { scanAll } from "./scan-pool.mjs";
 import { forgetCapabilities } from "./capabilities.mjs";
 import { verdict } from "./verdict.mjs";
@@ -101,6 +101,7 @@ export async function vet(target, opts = {}) {
   log(`${files.length} files read`);
   supabaseTablesWithoutRls(files, findings);
   scanBinaries(root, listed, findings);
+  scanBytecode(root, listed, findings);
   const prof = profiles(files);
   purposeMismatches(prof, findings);
   const atInstall = scanProjectInstallEntries(root, files, findings);
