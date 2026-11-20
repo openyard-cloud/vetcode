@@ -1,0 +1,27 @@
+name: probe resolveReviewThread permission
+# Temporary: which GITHUB_TOKEN permission resolveReviewThread needs. Resolves one thread of the
+# merged PR #46 and reopens it at once, so nothing is left changed.
+on:
+  push:
+    branches: [probe-resolve-permission]
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: pull-requests-write
+          - name: plus-contents-write
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: ${{ matrix.name == 'plus-contents-write' && 'write' || 'read' }}
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          T=PRRT_kwDOVjc7ks62C4T4
+          echo "resolve:"; gh api graphql -f query="mutation{resolveReviewThread(input:{threadId:\"$T\"}){thread{isResolved}}}"
+          echo "unresolve:"; gh api graphql -f query="mutation{unresolveReviewThread(input:{threadId:\"$T\"}){thread{isResolved}}}"
+          exit 0
