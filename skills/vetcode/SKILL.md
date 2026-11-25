@@ -3,7 +3,7 @@ name: vetcode
 license: MIT
 compatibility: Works with any agent that loads Agent Skills and can run shell commands. The scanner needs Node.js 18+; without it, follow the checklists by hand.
 metadata:
-  version: "0.8.9"
+  version: "0.8.18"
   homepage: https://github.com/openyard-cloud/vetcode
 description: Security check for apps, websites and servers. Finds malware and supply-chain attacks (malicious packages, install scripts, typosquats, booby-trapped repos, risky MCP servers and extensions), leaked secrets, and vulnerabilities in web/API code and server configuration, then confirms each finding by reading the code. Use when the user asks to check code for security problems, malware, vulnerabilities or leaked keys; before installing, cloning, opening or running an unfamiliar repository, package, extension or MCP server; before deploying or publishing; or to review a diff or PR for security. Also triggers on the same requests in any language.
 ---
@@ -42,7 +42,7 @@ Requires Node 18+. The script is in this skill's folder:
 node "<skill-dir>/scripts/vet.mjs" <target> --json "$TMPDIR/vetcode.json" [options]
 ```
 
-Options: `--online`, `--deps`, `--history`, `--diff [base]`, `--no-ignore`, `--no-tools`, `--baseline <old.json>` (show only findings not in an earlier report), `--mcp-lock <file>` (remember the project's MCP servers and tool descriptions; later runs report changes), `--sarif <file>`, `--fail-on <severity>`, `--quiet`. It prints a Markdown summary and writes every finding to the JSON file. It reads what git sees (tracked + untracked, minus `.gitignore`); outside git it reads everything except dependency and build folders. If gitleaks, zizmor, semgrep, osv-scanner or trivy are installed it uses them too (semgrep, osv-scanner and trivy only with `--online`).
+Options: `--online`, `--deps`, `--history`, `--diff [base]`, `--no-ignore`, `--no-tools`, `--baseline <old.json>` (show only findings not in an earlier report), `--mcp-lock <file>` (remember the project's MCP servers and tool descriptions; later runs report changes), `--sarif <file>`, `--fail-on <severity>`, `--quiet`. It prints a Markdown summary and writes every finding to the JSON file. It reads what git sees (tracked + untracked, minus `.gitignore`); outside git, or in a folder the surrounding repository ignores (`node_modules/x`, a download in `tmp/`), it reads everything except dependency and build folders. It does not follow symlinks. If gitleaks, zizmor, semgrep, osv-scanner or trivy are installed it uses them too (semgrep, osv-scanner and trivy only with `--online`).
 
 If Node is not available, skip to step 5 and review by hand with the reference checklists, saying so in the report.
 
