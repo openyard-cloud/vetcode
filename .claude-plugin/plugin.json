@@ -1,6 +1,6 @@
 {
   "name": "vetcode",
-  "version": "0.8.19",
+  "version": "0.8.20",
   "description": "Security review skill for coding agents: a procedure and checklists for finding malware, supply-chain attacks, leaked secrets, web/API vulnerabilities and server misconfiguration by reading code. Skill only: the scanner and the install guard are in the full plugin on GitHub.",
   "author": {
     "name": "OpenYard",
